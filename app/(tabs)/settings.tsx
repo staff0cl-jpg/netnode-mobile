@@ -117,7 +117,7 @@ export default function SettingsScreen() {
                   setApiUrl(t);
                   setTestResult(null);
                 }}
-                placeholder="https://your-server"
+                placeholder="https://netnode.domain.com"
                 placeholderTextColor={Colors.muted}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -172,7 +172,7 @@ export default function SettingsScreen() {
             <>
               <InfoRow label="User" value={session.username} />
               <View style={styles.divider} />
-              <InfoRow label="Role" value={session.role} />
+              <InfoRow label="Role" value={session.role || '—'} />
               <View style={styles.divider} />
               <TouchableOpacity style={styles.logoutRow} onPress={handleLogout}>
                 <Ionicons name="log-out-outline" size={18} color={Colors.red} />

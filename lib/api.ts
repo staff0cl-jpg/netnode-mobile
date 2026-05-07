@@ -53,7 +53,9 @@ async function buildHeaders(): Promise<Record<string, string>> {
   };
   if (session) {
     headers['x-user-name'] = session.username;
-    headers['x-user-role'] = session.role;
+    if (session.role?.trim()) {
+      headers['x-user-role'] = session.role.trim();
+    }
   }
   return headers;
 }
@@ -79,6 +81,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   try {
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: { ...headers, ...(options?.headers as Record<string, string>) },
       signal: controller.signal,
     });
@@ -132,6 +135,7 @@ export async function login(
   try {
     const response = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
       signal: controller.signal,
@@ -142,11 +146,14 @@ export async function login(
       throw new ApiError(response.status, 'Invalid credentials');
     }
 
-    const data = (await response.json()) as { role?: string; user?: { role?: string } };
-    const role = data.role ?? data.user?.role ?? 'viewer';
+    const data = (await response.json()) as {
+      role?: string;
+      user?: { role?: string; user_role?: string; type?: string };
+    };
+    const role = (data.role ?? data.user?.role ?? data.user?.user_role ?? data.user?.type ?? '').trim();
 
     await saveSession({ username, role });
-    return { success: true, role };
+    return { success: true, role: role || 'unknown' };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof ApiError) throw error;

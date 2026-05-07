@@ -7,7 +7,7 @@ const KEYS = {
   SESSION_TOKEN: 'netnode_session_token',
 };
 
-const DEFAULT_API_URL = 'https://your-server';
+const DEFAULT_API_URL = 'https://netnode.domain.com';
 
 export async function getApiUrl(): Promise<string> {
   try {
@@ -24,13 +24,13 @@ export async function saveApiUrl(url: string): Promise<void> {
 
 export interface SessionData {
   username: string;
-  role: string;
+  role?: string;
 }
 
 export async function saveSession(session: SessionData): Promise<void> {
   await AsyncStorage.multiSet([
     [KEYS.SESSION_USER, session.username],
-    [KEYS.SESSION_ROLE, session.role],
+    [KEYS.SESSION_ROLE, session.role ?? ''],
   ]);
 }
 
@@ -40,7 +40,7 @@ export async function getSession(): Promise<SessionData | null> {
     const username = pairs[0][1];
     const role = pairs[1][1];
     if (!username) return null;
-    return { username, role: role ?? 'viewer' };
+    return { username, role: role ?? '' };
   } catch {
     return null;
   }

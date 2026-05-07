@@ -6,7 +6,7 @@ import { Colors } from '../constants/colors';
 import { login } from '../lib/api';
 import { getApiUrl, getSession, saveApiUrl } from '../lib/storage';
 
-const DEFAULT_API_URL = 'https://your-server';
+const DEFAULT_API_URL = 'https://netnode.domain.com';
 type LoginStep = 'server' | 'credentials';
 
 export default function LoginScreen() {
