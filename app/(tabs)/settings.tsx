@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getApiUrl, saveApiUrl, getSession, clearSession, type SessionData } from '../../lib/storage';
 import { testConnection } from '../../lib/api';
 import { Colors } from '../../constants/colors';
@@ -86,6 +87,7 @@ export default function SettingsScreen() {
         onPress: async () => {
           await clearSession();
           setSession(null);
+          router.replace('/login');
         },
       },
     ]);

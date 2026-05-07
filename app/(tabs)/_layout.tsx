@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 import DashboardScreen from './index';
 import InventoryScreen from './inventory';
 import AlertsScreen from './alerts';
 import SettingsScreen from './settings';
+import { getSession } from '../../lib/storage';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 type TabName = 'index' | 'inventory' | 'alerts' | 'settings';
@@ -84,7 +86,27 @@ function CustomTabBar({
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 6);
+  const [authReady, setAuthReady] = useState(false);
   const [activeTab, setActiveTab] = useState<TabName>('index');
+
+  useEffect(() => {
+    (async () => {
+      const session = await getSession();
+      if (!session) {
+        router.replace('/login');
+        return;
+      }
+      setAuthReady(true);
+    })();
+  }, []);
+
+  if (!authReady) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator size="large" color={Colors.accent} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.shell}>
@@ -104,6 +126,12 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  loadingWrap: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   screenHost: {
     flex: 1,
