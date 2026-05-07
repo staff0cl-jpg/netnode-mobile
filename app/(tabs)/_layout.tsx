@@ -24,6 +24,7 @@ const TABS: TabConfig[] = [
   { name: 'alerts', title: 'Alerts', icon: 'warning-outline', iconFocused: 'warning' },
   { name: 'settings', title: 'Settings', icon: 'settings-outline', iconFocused: 'settings' },
 ];
+const TAB_BAR_BASE_HEIGHT = 58;
 
 function ActiveScreen({ activeTab }: { activeTab: TabName }) {
   if (activeTab === 'inventory') return <InventoryScreen />;
@@ -81,11 +82,17 @@ function CustomTabBar({
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 6);
   const [activeTab, setActiveTab] = useState<TabName>('index');
 
   return (
     <View style={styles.shell}>
-      <View key={activeTab} style={styles.screenHost}>
+      <View
+        key={activeTab}
+        pointerEvents="box-none"
+        style={[styles.screenHost, { paddingBottom: TAB_BAR_BASE_HEIGHT + bottomInset }]}
+      >
         <ActiveScreen activeTab={activeTab} />
       </View>
       <CustomTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
