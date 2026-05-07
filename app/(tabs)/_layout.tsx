@@ -25,8 +25,6 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        // Keep inactive tabs mounted without freezing to avoid iOS touch dead-zones
-        // seen when frequent state updates race with frozen native screens.
         lazy: true,
         freezeOnBlur: false,
         detachInactiveScreens: true,
@@ -35,6 +33,9 @@ export default function TabLayout() {
           backgroundColor: Colors.tabBar,
           borderTopColor: Colors.tabBarBorder,
           borderTopWidth: 1,
+          position: 'absolute',
+          zIndex: 1000,
+          elevation: 1000,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
           paddingTop: 4,
           height: 52 + (insets.bottom > 0 ? insets.bottom : 8),
