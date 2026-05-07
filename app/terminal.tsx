@@ -9,6 +9,20 @@ function makeSessionId() {
   return `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function extractEngineOpenPacket(raw: string) {
+  const parts = raw.split(String.fromCharCode(30));
+  for (const part of parts) {
+    if (part.startsWith('0{')) {
+      try {
+        return JSON.parse(part.slice(1)) as { sid?: string };
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
 export default function TerminalScreen() {
   const { host, name } = useLocalSearchParams<{ host?: string; name?: string }>();
   const sessionId = useMemo(() => makeSessionId(), []);
@@ -57,53 +71,82 @@ export default function TerminalScreen() {
     const apiUrl = await getApiUrl();
     const parsed = new URL(apiUrl);
     const cleanPath = parsed.pathname.replace(/\/api\/?$/i, '').replace(/\/$/, '');
+    const httpBase = `${parsed.protocol}//${parsed.host}${cleanPath}`;
+    const httpOrigin = `${parsed.protocol}//${parsed.host}`;
     const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsBase = `${wsProtocol}//${parsed.host}${cleanPath}`;
     const fallbackBase = `${wsProtocol}//${parsed.host}`;
-    const socketPaths = [
+    const pollingCandidates = Array.from(new Set([
+      `${httpBase}/socket.io/?EIO=4&transport=polling`,
+      `${httpOrigin}/socket.io/?EIO=4&transport=polling`,
+      `${httpOrigin}/api/socket.io/?EIO=4&transport=polling`,
+    ]));
+    const wsPathCandidates = Array.from(new Set([
       `${wsBase}/socket.io/`,
       `${fallbackBase}/socket.io/`,
       `${fallbackBase}/api/socket.io/`,
-      `${wsBase}/socket.io`,
-      `${fallbackBase}/socket.io`,
-      `${fallbackBase}/api/socket.io`,
-    ];
-    const wsCandidates = Array.from(new Set(
-      socketPaths.flatMap((path) => [
-        `${path}?EIO=4&transport=websocket`,
-        `${path}?EIO=3&transport=websocket`,
-      ]),
-    ));
+    ]));
     let attemptIndex = 0;
     let completed = false;
 
-    const tryConnect = () => {
-      const wsUrl = wsCandidates[attemptIndex];
-      if (!wsUrl) {
+    const tryConnect = async () => {
+      const pollingUrl = pollingCandidates[attemptIndex];
+      const wsPath = wsPathCandidates[attemptIndex];
+      if (!pollingUrl || !wsPath) {
         setConnecting(false);
         appendLog('[NETNODE] Socket error: no reachable Socket.IO endpoint');
         return;
       }
 
-      appendLog(`[NETNODE] Connecting ${attemptIndex + 1}/${wsCandidates.length}: ${wsUrl}`);
+      appendLog(`[NETNODE] Polling ${attemptIndex + 1}/${pollingCandidates.length}: ${pollingUrl}`);
+      let sid = '';
+      try {
+        const pollingResp = await fetch(pollingUrl, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { Accept: '*/*' },
+        });
+        const body = await pollingResp.text();
+        if (!pollingResp.ok) {
+          throw new Error(`HTTP ${pollingResp.status}`);
+        }
+        const openPacket = extractEngineOpenPacket(body);
+        if (!openPacket?.sid) {
+          throw new Error('missing sid');
+        }
+        sid = openPacket.sid;
+      } catch (e) {
+        appendLog(`[NETNODE] Polling failed (${attemptIndex + 1}/${pollingCandidates.length}): ${(e as Error).message}`);
+        attemptIndex += 1;
+        tryConnect();
+        return;
+      }
+
+      const wsUrl = `${wsPath}?EIO=4&transport=websocket&sid=${encodeURIComponent(sid)}`;
+      appendLog(`[NETNODE] WebSocket ${attemptIndex + 1}/${wsPathCandidates.length}: ${wsUrl}`);
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
+      let upgraded = false;
 
       socket.onopen = () => {
         appendLog('[NETNODE] Socket connected');
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send('2probe');
+        }
       };
 
       socket.onmessage = (evt) => {
         const msg = String(evt.data ?? '');
-        if (msg.startsWith('0')) {
-          socket.send('40');
-          return;
-        }
-        if (msg === '2') {
-          socket.send('3');
+        if (msg === '3probe') {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send('5');
+            socket.send('40');
+            upgraded = true;
+          }
           return;
         }
         if (msg === '40') {
+          if (!upgraded) return;
           setSocketReady(true);
           completed = true;
           if (socket.readyState === WebSocket.OPEN) {
@@ -115,6 +158,10 @@ export default function TerminalScreen() {
               port: 22,
             }])}`);
           }
+          return;
+        }
+        if (msg === '2') {
+          socket.send('3');
           return;
         }
         if (!msg.startsWith('42')) return;
@@ -137,7 +184,7 @@ export default function TerminalScreen() {
       };
 
       socket.onerror = () => {
-        appendLog(`[NETNODE] Socket error (${attemptIndex + 1}/${wsCandidates.length})`);
+        appendLog(`[NETNODE] Socket error (${attemptIndex + 1}/${wsPathCandidates.length})`);
       };
 
       socket.onclose = (evt) => {
@@ -156,7 +203,7 @@ export default function TerminalScreen() {
       };
     };
 
-    tryConnect();
+    void tryConnect();
   };
 
   const sendInput = () => {
