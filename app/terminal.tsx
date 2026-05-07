@@ -52,74 +52,104 @@ export default function TerminalScreen() {
     setConnecting(true);
     setSocketReady(false);
     setLogs([]);
+    setConnected(false);
 
     const apiUrl = await getApiUrl();
     const parsed = new URL(apiUrl);
     const cleanPath = parsed.pathname.replace(/\/api\/?$/i, '').replace(/\/$/, '');
     const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsBase = `${wsProtocol}//${parsed.host}${cleanPath}`;
-    const wsUrl = `${wsBase}/socket.io/?EIO=4&transport=websocket`;
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
+    const fallbackBase = `${wsProtocol}//${parsed.host}`;
+    const wsCandidates = Array.from(
+      new Set([
+        `${wsBase}/socket.io/?EIO=4&transport=websocket`,
+        `${fallbackBase}/socket.io/?EIO=4&transport=websocket`,
+        `${fallbackBase}/api/socket.io/?EIO=4&transport=websocket`,
+      ]),
+    );
+    let attemptIndex = 0;
+    let completed = false;
 
-    socket.onopen = () => {
-      appendLog('[NETNODE] Socket connected');
-    };
-
-    socket.onmessage = (evt) => {
-      const msg = String(evt.data ?? '');
-      if (msg.startsWith('0')) {
-        socket.send('40');
+    const tryConnect = () => {
+      const wsUrl = wsCandidates[attemptIndex];
+      if (!wsUrl) {
+        setConnecting(false);
+        appendLog('[NETNODE] Socket error: no reachable Socket.IO endpoint');
         return;
       }
-      if (msg === '2') {
-        socket.send('3');
-        return;
-      }
-      if (msg === '40') {
-        setSocketReady(true);
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(`42${JSON.stringify(['ssh:connect', {
-            sessionId,
-            host,
-            username: username.trim(),
-            password,
-            port: 22,
-          }])}`);
+
+      appendLog(`[NETNODE] Connecting ${attemptIndex + 1}/${wsCandidates.length}: ${wsUrl}`);
+      const socket = new WebSocket(wsUrl);
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        appendLog('[NETNODE] Socket connected');
+      };
+
+      socket.onmessage = (evt) => {
+        const msg = String(evt.data ?? '');
+        if (msg.startsWith('0')) {
+          socket.send('40');
+          return;
         }
-        return;
-      }
-      if (!msg.startsWith('42')) return;
-      try {
-        const payload = JSON.parse(msg.slice(2)) as [string, { sessionId?: string; data?: string; status?: string }];
-        const [event, data] = payload;
-        if (data.sessionId !== sessionId) return;
-        if (event === 'ssh:data' && data.data != null) {
-          appendLog(String(data.data));
+        if (msg === '2') {
+          socket.send('3');
+          return;
         }
-        if (event === 'ssh:status') {
-          const ok = data.status === 'connected';
-          setConnected(ok);
-          setConnecting(false);
-          appendLog(ok ? '[NETNODE] SSH connected' : '[NETNODE] SSH disconnected');
+        if (msg === '40') {
+          setSocketReady(true);
+          completed = true;
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(`42${JSON.stringify(['ssh:connect', {
+              sessionId,
+              host,
+              username: username.trim(),
+              password,
+              port: 22,
+            }])}`);
+          }
+          return;
         }
-      } catch {
-        // ignore malformed frame
-      }
+        if (!msg.startsWith('42')) return;
+        try {
+          const payload = JSON.parse(msg.slice(2)) as [string, { sessionId?: string; data?: string; status?: string }];
+          const [event, data] = payload;
+          if (data.sessionId !== sessionId) return;
+          if (event === 'ssh:data' && data.data != null) {
+            appendLog(String(data.data));
+          }
+          if (event === 'ssh:status') {
+            const ok = data.status === 'connected';
+            setConnected(ok);
+            setConnecting(false);
+            appendLog(ok ? '[NETNODE] SSH connected' : '[NETNODE] SSH disconnected');
+          }
+        } catch {
+          // ignore malformed frame
+        }
+      };
+
+      socket.onerror = () => {
+        appendLog(`[NETNODE] Socket error (${attemptIndex + 1}/${wsCandidates.length})`);
+      };
+
+      socket.onclose = (evt) => {
+        setConnected(false);
+        setSocketReady(false);
+        const detail = evt.reason ? `, reason: ${evt.reason}` : '';
+        appendLog(`[NETNODE] Socket disconnected (code: ${evt.code}${detail})`);
+
+        if (!completed) {
+          attemptIndex += 1;
+          tryConnect();
+          return;
+        }
+
+        setConnecting(false);
+      };
     };
 
-    socket.onerror = () => {
-      setConnected(false);
-      setConnecting(false);
-      appendLog('[NETNODE] Socket error');
-    };
-
-    socket.onclose = () => {
-      setConnected(false);
-      setConnecting(false);
-      setSocketReady(false);
-      appendLog('[NETNODE] Socket disconnected');
-    };
+    tryConnect();
   };
 
   const sendInput = () => {
