@@ -1,28 +1,30 @@
-import { Tabs } from 'expo-router';
+import { Slot, router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
 interface TabConfig {
   name: string;
+  href: string;
   title: string;
   icon: IoniconsName;
   iconFocused: IoniconsName;
 }
 
 const TABS: TabConfig[] = [
-  { name: 'index', title: 'Dashboard', icon: 'grid-outline', iconFocused: 'grid' },
-  { name: 'inventory', title: 'Inventory', icon: 'server-outline', iconFocused: 'server' },
-  { name: 'alerts', title: 'Alerts', icon: 'warning-outline', iconFocused: 'warning' },
-  { name: 'settings', title: 'Settings', icon: 'settings-outline', iconFocused: 'settings' },
+  { name: 'index', href: '/', title: 'Dashboard', icon: 'grid-outline', iconFocused: 'grid' },
+  { name: 'inventory', href: '/inventory', title: 'Inventory', icon: 'server-outline', iconFocused: 'server' },
+  { name: 'alerts', href: '/alerts', title: 'Alerts', icon: 'warning-outline', iconFocused: 'warning' },
+  { name: 'settings', href: '/settings', title: 'Settings', icon: 'settings-outline', iconFocused: 'settings' },
 ];
 
-const TAB_MAP = Object.fromEntries(TABS.map((tab) => [tab.name, tab])) as Record<string, TabConfig>;
-
-function CustomTabBar({ state, navigation, insets }: any) {
-  const bottomInset = Math.max(insets?.bottom ?? 0, 6);
+function CustomTabBar() {
+  const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 6);
 
   return (
     <View
@@ -30,26 +32,17 @@ function CustomTabBar({ state, navigation, insets }: any) {
       pointerEvents="box-none"
       style={[styles.tabBar, { paddingBottom: bottomInset }]}
     >
-      {state.routes.map((route: any, index: number) => {
-        const isFocused = state.index === index;
-        const tab = TAB_MAP[route.name];
-        if (!tab) return null;
-
-        const onPress = () => {
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-          });
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.jumpTo(route.name);
-          }
-        };
+      {TABS.map((tab) => {
+        const isFocused = pathname === tab.href;
 
         return (
           <Pressable
-            key={route.key}
-            onPress={onPress}
+            key={tab.name}
+            onPress={() => {
+              if (!isFocused) {
+                router.replace(tab.href as never);
+              }
+            }}
             onLongPress={() => {}}
             delayLongPress={100000}
             collapsable={false}
@@ -73,30 +66,18 @@ function CustomTabBar({ state, navigation, insets }: any) {
 
 export default function TabLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{
-        headerShown: false,
-        tabBarHideOnKeyboard: true,
-      }}
-    >
-      {TABS.map((tab) => (
-        <Tabs.Screen
-          key={tab.name}
-          name={tab.name}
-          options={{
-            title: tab.title,
-            tabBarIcon: ({ focused, color }) => (
-              <Ionicons name={focused ? tab.iconFocused : tab.icon} size={22} color={color} />
-            ),
-          }}
-        />
-      ))}
-    </Tabs>
+    <View style={styles.shell}>
+      <Slot />
+      <CustomTabBar />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
   tabBar: {
     position: 'absolute',
     left: 0,
