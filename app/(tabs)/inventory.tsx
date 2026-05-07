@@ -109,6 +109,8 @@ export default function InventoryScreen() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
+  const [showBranchMenu, setShowBranchMenu] = useState(false);
 
   const fetchDevices = useCallback(async () => {
     setError(null);
@@ -197,37 +199,71 @@ export default function InventoryScreen() {
             </TouchableOpacity>
           ))}
           <TouchableOpacity
-            style={[styles.filterTab, categoryFilter === 'all' && styles.filterTabActive]}
-            onPress={() => setCategoryFilter('all')}
+            style={styles.dropdownBtn}
+            onPress={() => {
+              setShowBranchMenu(false);
+              setShowCategoryMenu((v) => !v);
+            }}
           >
-            <Text style={[styles.filterTabText, categoryFilter === 'all' && styles.filterTabTextActive]}>All Categories</Text>
+            <Text style={styles.dropdownBtnText}>Category: {categoryFilter === 'all' ? 'All' : categoryFilter}</Text>
+            <Ionicons name={showCategoryMenu ? 'chevron-up' : 'chevron-down'} size={14} color={Colors.muted} />
           </TouchableOpacity>
-          {categories.map((category) => (
-            <TouchableOpacity
-              key={`cat-${category}`}
-              style={[styles.filterTab, categoryFilter === category && styles.filterTabActive]}
-              onPress={() => setCategoryFilter(category)}
-            >
-              <Text style={[styles.filterTabText, categoryFilter === category && styles.filterTabTextActive]}>{category}</Text>
-            </TouchableOpacity>
-          ))}
           <TouchableOpacity
-            style={[styles.filterTab, branchFilter === 'all' && styles.filterTabActive]}
-            onPress={() => setBranchFilter('all')}
+            style={styles.dropdownBtn}
+            onPress={() => {
+              setShowCategoryMenu(false);
+              setShowBranchMenu((v) => !v);
+            }}
           >
-            <Text style={[styles.filterTabText, branchFilter === 'all' && styles.filterTabTextActive]}>All Branches</Text>
+            <Text style={styles.dropdownBtnText}>Branch: {branchFilter === 'all' ? 'All' : branchFilter}</Text>
+            <Ionicons name={showBranchMenu ? 'chevron-up' : 'chevron-down'} size={14} color={Colors.muted} />
           </TouchableOpacity>
-          {branches.map((branch) => (
-            <TouchableOpacity
-              key={`branch-${branch}`}
-              style={[styles.filterTab, branchFilter === branch && styles.filterTabActive]}
-              onPress={() => setBranchFilter(branch)}
-            >
-              <Text style={[styles.filterTabText, branchFilter === branch && styles.filterTabTextActive]}>{branch}</Text>
-            </TouchableOpacity>
-          ))}
         </View>
       </ScrollView>
+      {(showCategoryMenu || showBranchMenu) && (
+        <View style={styles.dropdownPanel}>
+          {showCategoryMenu && (
+            <View style={styles.dropdownGroup}>
+              <Text style={styles.dropdownTitle}>Category</Text>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { setCategoryFilter('all'); setShowCategoryMenu(false); }}>
+                <Text style={styles.dropdownItemText}>All</Text>
+              </TouchableOpacity>
+              {categories.map((category) => (
+                <TouchableOpacity
+                  key={`cat-menu-${category}`}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setCategoryFilter(category);
+                    setShowCategoryMenu(false);
+                  }}
+                >
+                  <Text style={styles.dropdownItemText}>{category}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {showBranchMenu && (
+            <View style={styles.dropdownGroup}>
+              <Text style={styles.dropdownTitle}>Branch</Text>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { setBranchFilter('all'); setShowBranchMenu(false); }}>
+                <Text style={styles.dropdownItemText}>All</Text>
+              </TouchableOpacity>
+              {branches.map((branch) => (
+                <TouchableOpacity
+                  key={`branch-menu-${branch}`}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setBranchFilter(branch);
+                    setShowBranchMenu(false);
+                  }}
+                >
+                  <Text style={styles.dropdownItemText}>{branch}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
 
       {error && <Text style={styles.errorBanner}>{error}</Text>}
 
@@ -332,6 +368,39 @@ const styles = StyleSheet.create({
   filterTabActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
   filterTabText: { fontSize: 13, color: Colors.muted, fontWeight: '500' },
   filterTabTextActive: { color: '#fff' },
+  dropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dropdownBtnText: { fontSize: 13, color: Colors.muted, fontWeight: '500' },
+  dropdownPanel: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+    padding: 8,
+    gap: 8,
+  },
+  dropdownGroup: { gap: 4 },
+  dropdownTitle: { fontSize: 11, color: Colors.muted, fontWeight: '600' },
+  dropdownItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dropdownItemText: { fontSize: 13, color: Colors.text },
   errorBanner: { marginHorizontal: 16, marginBottom: 8, color: Colors.red, fontSize: 12 },
   listContent: { paddingHorizontal: 16, paddingBottom: 96, gap: 8 },
   card: {

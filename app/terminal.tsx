@@ -20,6 +20,7 @@ export default function TerminalScreen() {
   const [input, setInput] = useState('');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [socketReady, setSocketReady] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
@@ -42,13 +43,14 @@ export default function TerminalScreen() {
   };
 
   const sendEvent = (event: string, payload: Record<string, unknown>) => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !socketReady) return;
     socketRef.current.send(`42${JSON.stringify([event, payload])}`);
   };
 
   const connect = async () => {
     if (!host || !username.trim()) return;
     setConnecting(true);
+    setSocketReady(false);
     setLogs([]);
 
     const apiUrl = await getApiUrl();
@@ -58,20 +60,27 @@ export default function TerminalScreen() {
 
     socket.onopen = () => {
       appendLog('[NETNODE] Socket connected');
-      socket.send('40');
-      sendEvent('ssh:connect', {
-        sessionId,
-        host,
-        username: username.trim(),
-        password,
-        port: 22,
-      });
     };
 
     socket.onmessage = (evt) => {
       const msg = String(evt.data ?? '');
+      if (msg.startsWith('0')) {
+        socket.send('40');
+        return;
+      }
       if (msg === '2') {
         socket.send('3');
+        return;
+      }
+      if (msg === '40') {
+        setSocketReady(true);
+        sendEvent('ssh:connect', {
+          sessionId,
+          host,
+          username: username.trim(),
+          password,
+          port: 22,
+        });
         return;
       }
       if (!msg.startsWith('42')) return;
@@ -102,6 +111,7 @@ export default function TerminalScreen() {
     socket.onclose = () => {
       setConnected(false);
       setConnecting(false);
+      setSocketReady(false);
       appendLog('[NETNODE] Socket disconnected');
     };
   };

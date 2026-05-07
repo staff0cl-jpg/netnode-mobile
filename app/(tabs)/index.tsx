@@ -193,7 +193,7 @@ export default function DashboardScreen() {
             <Text style={styles.sectionTitle}>Down Trunk Ports</Text>
             <View style={styles.card}>
               {metrics!.down_trunks.map((trunk, idx) => (
-                <React.Fragment key={`${trunk.device_id}-${trunk.interface_name}`}>
+                <React.Fragment key={`${trunk.device_id}-${trunk.interface_name}-${trunk.description ?? 'na'}-${idx}`}>
                   {idx > 0 && <View style={styles.divider} />}
                   <View style={styles.trunkRow}>
                     <View style={[styles.statusDot, { backgroundColor: Colors.red }]} />
