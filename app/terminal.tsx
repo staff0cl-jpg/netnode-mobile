@@ -60,13 +60,20 @@ export default function TerminalScreen() {
     const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsBase = `${wsProtocol}//${parsed.host}${cleanPath}`;
     const fallbackBase = `${wsProtocol}//${parsed.host}`;
-    const wsCandidates = Array.from(
-      new Set([
-        `${wsBase}/socket.io/?EIO=4&transport=websocket`,
-        `${fallbackBase}/socket.io/?EIO=4&transport=websocket`,
-        `${fallbackBase}/api/socket.io/?EIO=4&transport=websocket`,
+    const socketPaths = [
+      `${wsBase}/socket.io/`,
+      `${fallbackBase}/socket.io/`,
+      `${fallbackBase}/api/socket.io/`,
+      `${wsBase}/socket.io`,
+      `${fallbackBase}/socket.io`,
+      `${fallbackBase}/api/socket.io`,
+    ];
+    const wsCandidates = Array.from(new Set(
+      socketPaths.flatMap((path) => [
+        `${path}?EIO=4&transport=websocket`,
+        `${path}?EIO=3&transport=websocket`,
       ]),
-    );
+    ));
     let attemptIndex = 0;
     let completed = false;
 
