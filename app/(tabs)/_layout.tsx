@@ -1,28 +1,44 @@
-import { Slot, router, usePathname } from 'expo-router';
+import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
+import DashboardScreen from './index';
+import InventoryScreen from './inventory';
+import AlertsScreen from './alerts';
+import SettingsScreen from './settings';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+type TabName = 'index' | 'inventory' | 'alerts' | 'settings';
 
 interface TabConfig {
-  name: string;
-  href: string;
+  name: TabName;
   title: string;
   icon: IoniconsName;
   iconFocused: IoniconsName;
 }
 
 const TABS: TabConfig[] = [
-  { name: 'index', href: '/', title: 'Dashboard', icon: 'grid-outline', iconFocused: 'grid' },
-  { name: 'inventory', href: '/inventory', title: 'Inventory', icon: 'server-outline', iconFocused: 'server' },
-  { name: 'alerts', href: '/alerts', title: 'Alerts', icon: 'warning-outline', iconFocused: 'warning' },
-  { name: 'settings', href: '/settings', title: 'Settings', icon: 'settings-outline', iconFocused: 'settings' },
+  { name: 'index', title: 'Dashboard', icon: 'grid-outline', iconFocused: 'grid' },
+  { name: 'inventory', title: 'Inventory', icon: 'server-outline', iconFocused: 'server' },
+  { name: 'alerts', title: 'Alerts', icon: 'warning-outline', iconFocused: 'warning' },
+  { name: 'settings', title: 'Settings', icon: 'settings-outline', iconFocused: 'settings' },
 ];
 
-function CustomTabBar() {
-  const pathname = usePathname();
+function ActiveScreen({ activeTab }: { activeTab: TabName }) {
+  if (activeTab === 'inventory') return <InventoryScreen />;
+  if (activeTab === 'alerts') return <AlertsScreen />;
+  if (activeTab === 'settings') return <SettingsScreen />;
+  return <DashboardScreen />;
+}
+
+function CustomTabBar({
+  activeTab,
+  onSelectTab,
+}: {
+  activeTab: TabName;
+  onSelectTab: (tab: TabName) => void;
+}) {
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 6);
 
@@ -33,14 +49,14 @@ function CustomTabBar() {
       style={styles.tabBar}
     >
       {TABS.map((tab) => {
-        const isFocused = pathname === tab.href;
+        const isFocused = activeTab === tab.name;
 
         return (
           <Pressable
             key={tab.name}
             onPress={() => {
               if (!isFocused) {
-                router.replace(tab.href as never);
+                onSelectTab(tab.name);
               }
             }}
             onLongPress={() => {}}
@@ -65,16 +81,24 @@ function CustomTabBar() {
 }
 
 export default function TabLayout() {
+  const [activeTab, setActiveTab] = useState<TabName>('index');
+
   return (
     <View style={styles.shell}>
-      <Slot />
-      <CustomTabBar />
+      <View key={activeTab} style={styles.screenHost}>
+        <ActiveScreen activeTab={activeTab} />
+      </View>
+      <CustomTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   shell: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  screenHost: {
     flex: 1,
     backgroundColor: Colors.background,
   },
