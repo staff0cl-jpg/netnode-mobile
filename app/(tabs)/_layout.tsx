@@ -29,8 +29,8 @@ function CustomTabBar() {
   return (
     <View
       collapsable={false}
-      pointerEvents="box-none"
-      style={[styles.tabBar, { paddingBottom: bottomInset }]}
+      pointerEvents="auto"
+      style={styles.tabBar}
     >
       {TABS.map((tab) => {
         const isFocused = pathname === tab.href;
@@ -47,7 +47,7 @@ function CustomTabBar() {
             delayLongPress={100000}
             collapsable={false}
             hitSlop={10}
-            style={styles.tabButton}
+            style={[styles.tabButton, { paddingBottom: bottomInset }]}
           >
             <Ionicons
               name={isFocused ? tab.iconFocused : tab.icon}
@@ -85,7 +85,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 1000,
     elevation: 1000,
-    pointerEvents: 'box-none',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
