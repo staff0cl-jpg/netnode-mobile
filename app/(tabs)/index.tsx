@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -68,8 +68,14 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fetchInFlightRef = useRef(false);
 
   const fetchData = useCallback(async (silent = false) => {
+    if (fetchInFlightRef.current) {
+      setRefreshing(false);
+      return;
+    }
+    fetchInFlightRef.current = true;
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -80,6 +86,7 @@ export default function DashboardScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      fetchInFlightRef.current = false;
     }
   }, []);
 
