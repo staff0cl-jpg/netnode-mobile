@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Pressable } from 'react-native';
 import { Colors } from '../../constants/colors';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
@@ -24,11 +25,30 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: false,
+        tabBarButton: (props: any) => {
+          const { style, ...rest } = props;
+          return (
+            <Pressable
+              {...rest}
+              hitSlop={8}
+              android_ripple={null}
+              style={({ pressed }) => [
+                style,
+                {
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            />
+          );
+        },
         tabBarStyle: {
           backgroundColor: Colors.tabBar,
           borderTopColor: Colors.tabBarBorder,
           borderTopWidth: 1,
           paddingTop: 4,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4,
         },
         tabBarActiveTintColor: Colors.tabActive,
         tabBarInactiveTintColor: Colors.tabInactive,
