@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getDashboardMetrics, type DashboardMetrics, type Device, type TrunkPort } from '../../lib/api';
 import { Colors } from '../../constants/colors';
 
@@ -92,15 +93,6 @@ export default function AlertsScreen() {
     fetchData();
   }, [fetchData]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-        <Text style={styles.loadingText}>Loading alerts…</Text>
-      </SafeAreaView>
-    );
-  }
-
   const offlineDevices: AlertItem[] = (metrics?.top_devices ?? [])
     .filter((d) => d.status === 'offline')
     .map((d) => ({ type: 'device', data: d }));
@@ -136,57 +128,83 @@ export default function AlertsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Alerts</Text>
-        {totalAlerts > 0 && (
-          <View style={styles.alertCount}>
-            <Text style={styles.alertCountText}>{totalAlerts}</Text>
-          </View>
-        )}
-      </View>
-
-      {error && <Text style={styles.errorBanner}>{error}</Text>}
-
-      {totalAlerts === 0 && !error ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="checkmark-circle-outline" size={52} color={Colors.green} />
-          <Text style={styles.emptyTitle}>All Clear</Text>
-          <Text style={styles.emptyText}>No active alerts at this time</Text>
+      {loading && !metrics ? (
+        <View style={styles.stateContainer}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+          <Text style={styles.loadingText}>Loading alerts…</Text>
         </View>
       ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item, index) =>
-            item.type === 'device'
-              ? `device-${item.data.id ?? index}`
-              : `trunk-${(item.data as TrunkPort).device_id}-${(item.data as TrunkPort).interface_name}`
-          }
-          renderItem={({ item }) =>
-            item.type === 'device' ? (
-              <DeviceAlertRow device={item.data as Device} />
-            ) : (
-              <TrunkAlertRow trunk={item.data as TrunkPort} />
-            )
-          }
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              <View style={styles.sectionCount}>
-                <Text style={styles.sectionCountText}>{section.count}</Text>
+        <>
+          <View style={styles.header}>
+            <Text style={styles.title}>Alerts</Text>
+            {totalAlerts > 0 && (
+              <View style={styles.alertCount}>
+                <Text style={styles.alertCountText}>{totalAlerts}</Text>
+              </View>
+            )}
+          </View>
+
+          {error && <Text style={styles.errorBanner}>{error}</Text>}
+
+          {totalAlerts === 0 && !error ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="checkmark-circle-outline" size={52} color={Colors.green} />
+              <Text style={styles.emptyTitle}>All Clear</Text>
+              <Text style={styles.emptyText}>No active alerts at this time</Text>
+            </View>
+          ) : error && totalAlerts === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="cloud-offline-outline" size={52} color={Colors.muted} />
+              <Text style={styles.emptyTitle}>Failed to load alerts</Text>
+              <Text style={styles.emptyText}>{error}</Text>
+              <View style={styles.emptyActions}>
+                <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.retryBtn, styles.settingsBtn]}
+                  onPress={() => router.push('/(tabs)/settings')}
+                >
+                  <Text style={[styles.retryBtnText, styles.settingsBtnText]}>Settings</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          )}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.accent}
-              colors={[Colors.accent]}
+          ) : (
+            <SectionList
+              sections={sections}
+              keyExtractor={(item, index) =>
+                item.type === 'device'
+                  ? `device-${item.data.id ?? index}`
+                  : `trunk-${(item.data as TrunkPort).device_id}-${(item.data as TrunkPort).interface_name}`
+              }
+              renderItem={({ item }) =>
+                item.type === 'device' ? (
+                  <DeviceAlertRow device={item.data as Device} />
+                ) : (
+                  <TrunkAlertRow trunk={item.data as TrunkPort} />
+                )
+              }
+              renderSectionHeader={({ section }) => (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>{section.title}</Text>
+                  <View style={styles.sectionCount}>
+                    <Text style={styles.sectionCountText}>{section.count}</Text>
+                  </View>
+                </View>
+              )}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={Colors.accent}
+                  colors={[Colors.accent]}
+                />
+              }
+              stickySectionHeadersEnabled={false}
             />
-          }
-          stickySectionHeadersEnabled={false}
-        />
+          )}
+        </>
       )}
     </SafeAreaView>
   );
@@ -194,7 +212,7 @@ export default function AlertsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  centered: {
+  stateContainer: {
     flex: 1,
     backgroundColor: Colors.background,
     alignItems: 'center',
@@ -272,7 +290,21 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 32,
   },
+  emptyActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.heading },
   emptyText: { fontSize: 14, color: Colors.muted, textAlign: 'center' },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: Colors.accent,
+    borderRadius: 8,
+  },
+  retryBtnText: { color: '#fff', fontWeight: '600' },
+  settingsBtn: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  settingsBtnText: { color: Colors.text },
   mono: { fontFamily: 'monospace' },
 });

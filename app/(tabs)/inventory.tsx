@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getInventory, type Device } from '../../lib/api';
 import { Colors } from '../../constants/colors';
 
@@ -107,94 +108,102 @@ export default function InventoryScreen() {
     return matchesSearch && matchesFilter;
   });
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-        <Text style={styles.loadingText}>Loading inventory…</Text>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Inventory</Text>
-        <Text style={styles.subtitle}>{filtered.length} devices</Text>
-      </View>
-
-      <View style={styles.searchRow}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={16} color={Colors.muted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name or IP…"
-            placeholderTextColor={Colors.muted}
-            value={search}
-            onChangeText={setSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {search !== '' && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={16} color={Colors.muted} />
-            </TouchableOpacity>
-          )}
+      {loading && devices.length === 0 ? (
+        <View style={styles.stateContainer}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+          <Text style={styles.loadingText}>Loading inventory…</Text>
         </View>
-      </View>
-
-      <View style={styles.filterRow}>
-        {FILTER_TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.value}
-            style={[styles.filterTab, filter === tab.value && styles.filterTabActive]}
-            onPress={() => setFilter(tab.value)}
-          >
-            <Text
-              style={[styles.filterTabText, filter === tab.value && styles.filterTabTextActive]}
-            >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {error && <Text style={styles.errorBanner}>{error}</Text>}
-
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => String(item.id ?? item.ip)}
-        renderItem={({ item }) => <DeviceCard device={item} />}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.accent}
-            colors={[Colors.accent]}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="server-outline" size={40} color={Colors.muted} />
-            <Text style={styles.emptyText}>
-              {error ? 'Failed to load devices' : 'No devices found'}
-            </Text>
-            {error && (
-              <TouchableOpacity style={styles.retryBtn} onPress={fetchDevices}>
-                <Text style={styles.retryBtnText}>Retry</Text>
-              </TouchableOpacity>
-            )}
+      ) : (
+        <>
+          <View style={styles.header}>
+            <Text style={styles.title}>Inventory</Text>
+            <Text style={styles.subtitle}>{filtered.length} devices</Text>
           </View>
-        }
-      />
+
+          <View style={styles.searchRow}>
+            <View style={styles.searchBox}>
+              <Ionicons name="search-outline" size={16} color={Colors.muted} style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name or IP…"
+                placeholderTextColor={Colors.muted}
+                value={search}
+                onChangeText={setSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {search !== '' && (
+                <TouchableOpacity onPress={() => setSearch('')}>
+                  <Ionicons name="close-circle" size={16} color={Colors.muted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.filterRow}>
+            {FILTER_TABS.map((tab) => (
+              <TouchableOpacity
+                key={tab.value}
+                style={[styles.filterTab, filter === tab.value && styles.filterTabActive]}
+                onPress={() => setFilter(tab.value)}
+              >
+                <Text
+                  style={[styles.filterTabText, filter === tab.value && styles.filterTabTextActive]}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {error && <Text style={styles.errorBanner}>{error}</Text>}
+
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => String(item.id ?? item.ip)}
+            renderItem={({ item }) => <DeviceCard device={item} />}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={Colors.accent}
+                colors={[Colors.accent]}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="server-outline" size={40} color={Colors.muted} />
+                <Text style={styles.emptyText}>
+                  {error ? 'Failed to load devices' : 'No devices found'}
+                </Text>
+                {error && (
+                  <View style={styles.emptyActions}>
+                    <TouchableOpacity style={styles.retryBtn} onPress={fetchDevices}>
+                      <Text style={styles.retryBtnText}>Retry</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.retryBtn, styles.settingsBtn]}
+                      onPress={() => router.push('/(tabs)/settings')}
+                    >
+                      <Text style={[styles.retryBtnText, styles.settingsBtnText]}>Settings</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            }
+          />
+        </>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  centered: {
+  stateContainer: {
     flex: 1,
     backgroundColor: Colors.background,
     alignItems: 'center',
@@ -237,7 +246,7 @@ const styles = StyleSheet.create({
   filterTabText: { fontSize: 13, color: Colors.muted, fontWeight: '500' },
   filterTabTextActive: { color: '#fff' },
   errorBanner: { marginHorizontal: 16, marginBottom: 8, color: Colors.red, fontSize: 12 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 16, gap: 8 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
   card: {
     backgroundColor: Colors.card,
     borderRadius: 10,
@@ -263,6 +272,7 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12, color: Colors.muted },
   mono: { fontFamily: 'monospace' },
   emptyContainer: { alignItems: 'center', paddingTop: 60, gap: 10 },
+  emptyActions: { flexDirection: 'row', gap: 10 },
   emptyText: { color: Colors.muted, fontSize: 14 },
   retryBtn: {
     marginTop: 8,
@@ -272,4 +282,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryBtnText: { color: '#fff', fontWeight: '600' },
+  settingsBtn: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  settingsBtnText: { color: Colors.text },
 });

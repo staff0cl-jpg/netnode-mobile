@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 import { getDashboardMetrics, type DashboardMetrics, type Device } from '../../lib/api';
 import { Colors } from '../../constants/colors';
 
@@ -110,27 +111,6 @@ export default function DashboardScreen() {
     fetchData(true);
   }, [fetchData]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-        <Text style={styles.loadingText}>Loading dashboard…</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (error && !metrics) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <Ionicons name="cloud-offline-outline" size={48} color={Colors.muted} />
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => fetchData()}>
-          <Text style={styles.retryBtnText}>Retry</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
-  }
-
   const kpiCards: KpiCardProps[] = [
     {
       title: 'Total Devices',
@@ -160,68 +140,92 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView
-        style={styles.scroll}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.accent}
-            colors={[Colors.accent]}
-          />
-        }
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Dashboard</Text>
-          {error && (
-            <Text style={styles.errorBanner}>{error}</Text>
-          )}
+      {loading && !metrics ? (
+        <View style={styles.stateContainer}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+          <Text style={styles.loadingText}>Loading dashboard…</Text>
         </View>
-
-        <View style={styles.kpiGrid}>
-          {kpiCards.map((card) => (
-            <KpiCard key={card.title} {...card} />
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Top Devices</Text>
-          {metrics?.top_devices?.length ? (
-            <View style={styles.card}>
-              {metrics.top_devices.slice(0, 5).map((device, idx) => (
-                <React.Fragment key={device.id ?? idx}>
-                  {idx > 0 && <View style={styles.divider} />}
-                  <DeviceRow device={device} />
-                </React.Fragment>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.card}>
-              <Text style={styles.emptyText}>No device data available</Text>
-            </View>
-          )}
-        </View>
-
-        {(metrics?.down_trunks?.length ?? 0) > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Down Trunk Ports</Text>
-            <View style={styles.card}>
-              {metrics!.down_trunks.map((trunk, idx) => (
-                <React.Fragment key={`${trunk.device_id}-${trunk.interface_name}`}>
-                  {idx > 0 && <View style={styles.divider} />}
-                  <View style={styles.trunkRow}>
-                    <View style={[styles.statusDot, { backgroundColor: Colors.red }]} />
-                    <View style={styles.deviceInfo}>
-                      <Text style={styles.deviceName}>{trunk.device_name}</Text>
-                      <Text style={[styles.deviceMeta, styles.mono]}>{trunk.interface_name}</Text>
-                    </View>
-                  </View>
-                </React.Fragment>
-              ))}
-            </View>
+      ) : error && !metrics ? (
+        <View style={styles.stateContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={Colors.muted} />
+          <Text style={styles.errorText}>{error}</Text>
+          <View style={styles.stateActions}>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => fetchData()}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.retryBtn, styles.settingsBtn]}
+              onPress={() => router.push('/(tabs)/settings')}
+            >
+              <Text style={[styles.retryBtnText, styles.settingsBtnText]}>Settings</Text>
+            </TouchableOpacity>
           </View>
-        )}
-      </ScrollView>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={Colors.accent}
+              colors={[Colors.accent]}
+            />
+          }
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>Dashboard</Text>
+            {error && (
+              <Text style={styles.errorBanner}>{error}</Text>
+            )}
+          </View>
+
+          <View style={styles.kpiGrid}>
+            {kpiCards.map((card) => (
+              <KpiCard key={card.title} {...card} />
+            ))}
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Top Devices</Text>
+            {metrics?.top_devices?.length ? (
+              <View style={styles.card}>
+                {metrics.top_devices.slice(0, 5).map((device, idx) => (
+                  <React.Fragment key={device.id ?? idx}>
+                    {idx > 0 && <View style={styles.divider} />}
+                    <DeviceRow device={device} />
+                  </React.Fragment>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.card}>
+                <Text style={styles.emptyText}>No device data available</Text>
+              </View>
+            )}
+          </View>
+
+          {(metrics?.down_trunks?.length ?? 0) > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Down Trunk Ports</Text>
+              <View style={styles.card}>
+                {metrics!.down_trunks.map((trunk, idx) => (
+                  <React.Fragment key={`${trunk.device_id}-${trunk.interface_name}`}>
+                    {idx > 0 && <View style={styles.divider} />}
+                    <View style={styles.trunkRow}>
+                      <View style={[styles.statusDot, { backgroundColor: Colors.red }]} />
+                      <View style={styles.deviceInfo}>
+                        <Text style={styles.deviceName}>{trunk.device_name}</Text>
+                        <Text style={[styles.deviceMeta, styles.mono]}>{trunk.interface_name}</Text>
+                      </View>
+                    </View>
+                  </React.Fragment>
+                ))}
+              </View>
+            </View>
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -229,13 +233,14 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scroll: { flex: 1 },
-  centered: {
+  stateContainer: {
     flex: 1,
     backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
+  stateActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
   header: { padding: 16, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '700', color: Colors.heading },
   errorBanner: {
@@ -246,13 +251,19 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 12, color: Colors.muted, fontSize: 14 },
   errorText: { marginTop: 12, color: Colors.text, textAlign: 'center', fontSize: 14 },
   retryBtn: {
-    marginTop: 16,
     paddingHorizontal: 24,
     paddingVertical: 10,
     backgroundColor: Colors.accent,
     borderRadius: 8,
   },
   retryBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  settingsBtn: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  settingsBtnText: { color: Colors.text },
+  scrollContent: { paddingBottom: 24 },
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

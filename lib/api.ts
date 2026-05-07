@@ -60,6 +60,16 @@ async function buildHeaders(): Promise<Record<string, string>> {
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const baseUrl = await getApiUrl();
+  if (!baseUrl) {
+    throw new Error('API URL is empty. Open Settings and set a valid server URL.');
+  }
+
+  try {
+    new URL(baseUrl);
+  } catch {
+    throw new Error('API URL is invalid. Open Settings and enter a valid URL.');
+  }
+
   const headers = await buildHeaders();
   const url = `${baseUrl}${path}`;
 
@@ -106,6 +116,16 @@ export async function login(
   password: string,
 ): Promise<{ success: boolean; role: string }> {
   const baseUrl = await getApiUrl();
+  if (!baseUrl) {
+    throw new Error('API URL is empty. Open Settings and set a valid server URL.');
+  }
+
+  try {
+    new URL(baseUrl);
+  } catch {
+    throw new Error('API URL is invalid. Open Settings and enter a valid URL.');
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
