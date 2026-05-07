@@ -225,41 +225,45 @@ export default function InventoryScreen() {
           {showCategoryMenu && (
             <View style={styles.dropdownGroup}>
               <Text style={styles.dropdownTitle}>Category</Text>
-              <TouchableOpacity style={styles.dropdownItem} onPress={() => { setCategoryFilter('all'); setShowCategoryMenu(false); }}>
-                <Text style={styles.dropdownItemText}>All</Text>
-              </TouchableOpacity>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={`cat-menu-${category}`}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setCategoryFilter(category);
-                    setShowCategoryMenu(false);
-                  }}
-                >
-                  <Text style={styles.dropdownItemText}>{category}</Text>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+                <TouchableOpacity style={styles.dropdownItem} onPress={() => { setCategoryFilter('all'); setShowCategoryMenu(false); }}>
+                  <Text style={styles.dropdownItemText}>All</Text>
                 </TouchableOpacity>
-              ))}
+                {categories.map((category) => (
+                  <TouchableOpacity
+                    key={`cat-menu-${category}`}
+                    style={styles.dropdownItem}
+                    onPress={() => {
+                      setCategoryFilter(category);
+                      setShowCategoryMenu(false);
+                    }}
+                  >
+                    <Text style={styles.dropdownItemText}>{category}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )}
           {showBranchMenu && (
             <View style={styles.dropdownGroup}>
               <Text style={styles.dropdownTitle}>Branch</Text>
-              <TouchableOpacity style={styles.dropdownItem} onPress={() => { setBranchFilter('all'); setShowBranchMenu(false); }}>
-                <Text style={styles.dropdownItemText}>All</Text>
-              </TouchableOpacity>
-              {branches.map((branch) => (
-                <TouchableOpacity
-                  key={`branch-menu-${branch}`}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setBranchFilter(branch);
-                    setShowBranchMenu(false);
-                  }}
-                >
-                  <Text style={styles.dropdownItemText}>{branch}</Text>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled>
+                <TouchableOpacity style={styles.dropdownItem} onPress={() => { setBranchFilter('all'); setShowBranchMenu(false); }}>
+                  <Text style={styles.dropdownItemText}>All</Text>
                 </TouchableOpacity>
-              ))}
+                {branches.map((branch) => (
+                  <TouchableOpacity
+                    key={`branch-menu-${branch}`}
+                    style={styles.dropdownItem}
+                    onPress={() => {
+                      setBranchFilter(branch);
+                      setShowBranchMenu(false);
+                    }}
+                  >
+                    <Text style={styles.dropdownItemText}>{branch}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )}
         </View>
@@ -391,6 +395,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dropdownGroup: { gap: 4 },
+  dropdownList: { maxHeight: 220 },
   dropdownTitle: { fontSize: 11, color: Colors.muted, fontWeight: '600' },
   dropdownItem: {
     paddingHorizontal: 10,

@@ -54,7 +54,11 @@ export default function TerminalScreen() {
     setLogs([]);
 
     const apiUrl = await getApiUrl();
-    const wsUrl = `${apiUrl.replace(/^http/i, 'ws').replace(/\/$/, '')}/socket.io/?EIO=4&transport=websocket`;
+    const parsed = new URL(apiUrl);
+    const cleanPath = parsed.pathname.replace(/\/api\/?$/i, '').replace(/\/$/, '');
+    const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsBase = `${wsProtocol}//${parsed.host}${cleanPath}`;
+    const wsUrl = `${wsBase}/socket.io/?EIO=4&transport=websocket`;
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
 
@@ -74,13 +78,15 @@ export default function TerminalScreen() {
       }
       if (msg === '40') {
         setSocketReady(true);
-        sendEvent('ssh:connect', {
-          sessionId,
-          host,
-          username: username.trim(),
-          password,
-          port: 22,
-        });
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(`42${JSON.stringify(['ssh:connect', {
+            sessionId,
+            host,
+            username: username.trim(),
+            password,
+            port: 22,
+          }])}`);
+        }
         return;
       }
       if (!msg.startsWith('42')) return;

@@ -190,7 +190,7 @@ export default function SettingsScreen() {
         <SettingsSection title="ABOUT">
           <InfoRow label="App" value="NetNode Mobile" />
           <View style={styles.divider} />
-          <InfoRow label="Version" value="1.05" />
+          <InfoRow label="Version" value="1.06" />
           <View style={styles.divider} />
           <InfoRow label="API" value={savedUrl} mono />
         </SettingsSection>
