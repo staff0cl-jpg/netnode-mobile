@@ -1,11 +1,13 @@
 import { getApiUrl, getSession, saveSession, clearSession } from './storage';
 
 export interface Device {
-  id: number;
+  id: number | string;
   name: string;
   ip: string;
   vendor?: string;
   model?: string;
+  category?: string;
+  subcategory?: string;
   status: 'online' | 'offline' | 'warning';
   uptime?: string;
   branch?: string;
@@ -111,7 +113,54 @@ export async function getInventory(): Promise<Device[]> {
 }
 
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {
-  return apiFetch<DashboardMetrics>('/api/metrics/dashboard');
+  const [inventory, raw] = await Promise.all([
+    getInventory(),
+    apiFetch<{
+      devices?: Array<{
+        id: string;
+        name: string;
+        ip: string;
+        branch?: string;
+        category?: string;
+        trunks?: Array<{
+          ifName?: string;
+          description?: string;
+          operStatus?: number;
+        }>;
+      }>;
+      trunkSummary?: {
+        down?: number;
+      };
+    }>('/api/metrics/dashboard'),
+  ]);
+
+  const totalDevices = inventory.length;
+  const onlineDevices = inventory.filter((d) => d.status === 'online').length;
+  const warningDevices = inventory.filter((d) => d.status === 'warning').length;
+  const offlineDevices = inventory.filter((d) => d.status === 'offline').length;
+
+  const downTrunks: TrunkPort[] = (raw.devices ?? []).flatMap((dev) =>
+    (dev.trunks ?? [])
+      .filter((trunk) => Number(trunk.operStatus ?? 2) !== 1)
+      .map((trunk) => ({
+        device_id: Number(dev.id) || 0,
+        device_name: dev.name,
+        interface_name: trunk.ifName || 'unknown',
+        status: 'down' as const,
+        description: trunk.description || '',
+      }))
+  );
+
+  return {
+    total_devices: totalDevices,
+    online_devices: onlineDevices,
+    offline_devices: offlineDevices,
+    warning_devices: warningDevices,
+    active_alerts: Number(raw.trunkSummary?.down ?? 0) + offlineDevices + warningDevices,
+    avg_cpu_load: 0,
+    down_trunks: downTrunks,
+    top_devices: inventory.slice(0, 20),
+  };
 }
 
 export async function login(
