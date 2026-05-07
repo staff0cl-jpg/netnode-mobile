@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { getDashboardMetrics, type DashboardMetrics, type Device } from '../../lib/api';
 import { Colors } from '../../constants/colors';
 
@@ -66,7 +67,6 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -82,13 +82,28 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-    timerRef.current = setInterval(() => fetchData(true), POLL_INTERVAL);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [fetchData]);
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      let timer: ReturnType<typeof setInterval> | null = null;
+
+      fetchData().catch(() => {
+        // Initial load error is handled by fetchData state.
+      });
+      timer = setInterval(() => {
+        if (isMounted) {
+          fetchData(true).catch(() => {
+            // Silent poll errors are handled by fetchData state.
+          });
+        }
+      }, POLL_INTERVAL);
+
+      return () => {
+        isMounted = false;
+        if (timer) clearInterval(timer);
+      };
+    }, [fetchData]),
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
