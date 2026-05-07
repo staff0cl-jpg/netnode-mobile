@@ -360,11 +360,11 @@ export default function TerminalScreen() {
           placeholderTextColor={Colors.muted}
           autoCapitalize="none"
           autoCorrect={false}
+          editable={connected}
+          returnKeyType="send"
+          blurOnSubmit={false}
           onSubmitEditing={sendInput}
         />
-        <TouchableOpacity style={[styles.sendBtn, !connected && styles.sendBtnDisabled]} onPress={sendInput} disabled={!connected}>
-          <Text style={styles.sendBtnText}>Send</Text>
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -386,9 +386,6 @@ const styles = StyleSheet.create({
   terminalContent: { padding: 10, minHeight: 180 },
   empty: { color: Colors.muted, fontFamily: 'monospace', fontSize: 12 },
   line: { color: '#d8dee9', fontFamily: 'monospace', fontSize: 12, marginBottom: 2 },
-  inputRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 14 },
+  inputRow: { paddingHorizontal: 16, paddingBottom: 14 },
   commandInput: { flex: 1, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, color: Colors.text, paddingHorizontal: 12, paddingVertical: 10 },
-  sendBtn: { minWidth: 74, backgroundColor: Colors.accent, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: { color: '#fff', fontWeight: '600' },
 });
