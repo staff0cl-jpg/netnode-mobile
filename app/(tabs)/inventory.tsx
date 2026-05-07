@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   filterTabText: { fontSize: 13, color: Colors.muted, fontWeight: '500' },
   filterTabTextActive: { color: '#fff' },
   errorBanner: { marginHorizontal: 16, marginBottom: 8, color: Colors.red, fontSize: 12 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 16, gap: 8 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 96, gap: 8 },
   card: {
     backgroundColor: Colors.card,
     borderRadius: 10,

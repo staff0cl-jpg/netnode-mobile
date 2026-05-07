@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 20 },
+  scrollContent: { paddingBottom: 96 },
   header: { padding: 16, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '700', color: Colors.heading },
   section: { paddingHorizontal: 16, paddingBottom: 8 },

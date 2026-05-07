@@ -38,7 +38,7 @@ function CustomTabBar({ state, navigation, insets }: any) {
             canPreventDefault: true,
           });
           if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
+            navigation.jumpTo(route.name);
           }
         };
 
@@ -92,6 +92,12 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    elevation: 1000,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -107,6 +113,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
     minHeight: 44,
+    zIndex: 1001,
   },
   tabLabel: {
     fontSize: 11,

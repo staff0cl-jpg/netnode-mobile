@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   },
   alertCountText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   errorBanner: { marginHorizontal: 16, marginBottom: 8, color: Colors.red, fontSize: 12 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 24 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 96 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
