@@ -38,6 +38,11 @@ export interface DashboardMetrics {
   top_devices: Device[];
 }
 
+export interface InventoryMeta {
+  categories: string[];
+  branches: string[];
+}
+
 class ApiError extends Error {
   constructor(
     public statusCode: number,
@@ -110,6 +115,17 @@ export async function getInventory(): Promise<Device[]> {
   const data = await apiFetch<{ devices?: Device[] } | Device[]>('/api/inventory');
   if (Array.isArray(data)) return data;
   return (data as { devices?: Device[] }).devices ?? [];
+}
+
+export async function getInventoryMeta(): Promise<InventoryMeta> {
+  const data = await apiFetch<{
+    categories?: string[];
+    branches?: string[];
+  }>('/api/inventory/meta');
+  return {
+    categories: data.categories ?? [],
+    branches: data.branches ?? [],
+  };
 }
 
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {

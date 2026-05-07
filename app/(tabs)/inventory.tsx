@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
+  Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,7 +14,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getInventory, type Device } from '../../lib/api';
+import { router } from 'expo-router';
+import { getInventory, getInventoryMeta, type Device } from '../../lib/api';
 import { Colors } from '../../constants/colors';
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'warning';
@@ -39,9 +43,21 @@ function StatusBadge({ status }: { status: Device['status'] }) {
   );
 }
 
-function DeviceCard({ device }: { device: Device }) {
+function DeviceCard({
+  device,
+  expanded,
+  onToggle,
+  onOpenWeb,
+  onOpenSsh,
+}: {
+  device: Device;
+  expanded: boolean;
+  onToggle: () => void;
+  onOpenWeb: () => void;
+  onOpenSsh: () => void;
+}) {
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onPress={onToggle}>
       <View style={styles.cardHeader}>
         <Text style={styles.deviceName} numberOfLines={1}>
           {device.name}
@@ -63,24 +79,44 @@ function DeviceCard({ device }: { device: Device }) {
         {device.uptime ? (
           <Text style={[styles.metaText, styles.mono]}>↑ {device.uptime}</Text>
         ) : null}
+        {device.category ? <Text style={styles.metaText}>#{device.category}</Text> : null}
       </View>
-    </View>
+      {expanded && (
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={[styles.actionBtn, styles.actionWeb]} onPress={onOpenWeb}>
+            <Ionicons name="globe-outline" size={14} color="#fff" />
+            <Text style={styles.actionBtnText}>Open Web</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionBtn, styles.actionSsh]} onPress={onOpenSsh}>
+            <Ionicons name="terminal-outline" size={14} color="#fff" />
+            <Text style={styles.actionBtnText}>Open SSH</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
 export default function InventoryScreen() {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState('all');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchDevices = useCallback(async () => {
     setError(null);
     try {
-      const data = await getInventory();
+      const [data, meta] = await Promise.all([getInventory(), getInventoryMeta()]);
       setDevices(data);
+      setCategories(meta.categories ?? []);
+      setBranches(meta.branches ?? []);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -104,7 +140,11 @@ export default function InventoryScreen() {
       d.name.toLowerCase().includes(search.toLowerCase()) ||
       d.ip.includes(search);
     const matchesFilter = filter === 'all' || d.status === filter;
-    return matchesSearch && matchesFilter;
+    const matchesCategory =
+      categoryFilter === 'all' || (d.category ?? '').toLowerCase() === categoryFilter.toLowerCase();
+    const matchesBranch =
+      branchFilter === 'all' || (d.branch ?? '').toLowerCase() === branchFilter.toLowerCase();
+    return matchesSearch && matchesFilter && matchesCategory && matchesBranch;
   });
 
   if (loading) {
@@ -143,28 +183,84 @@ export default function InventoryScreen() {
         </View>
       </View>
 
-      <View style={styles.filterRow}>
-        {FILTER_TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.value}
-            style={[styles.filterTab, filter === tab.value && styles.filterTabActive]}
-            onPress={() => setFilter(tab.value)}
-          >
-            <Text
-              style={[styles.filterTabText, filter === tab.value && styles.filterTabTextActive]}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll} contentContainerStyle={styles.filtersScrollContent}>
+        <View style={styles.filterRow}>
+          {FILTER_TABS.map((tab) => (
+            <TouchableOpacity
+              key={tab.value}
+              style={[styles.filterTab, filter === tab.value && styles.filterTabActive]}
+              onPress={() => setFilter(tab.value)}
             >
-              {tab.label}
-            </Text>
+              <Text style={[styles.filterTabText, filter === tab.value && styles.filterTabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            style={[styles.filterTab, categoryFilter === 'all' && styles.filterTabActive]}
+            onPress={() => setCategoryFilter('all')}
+          >
+            <Text style={[styles.filterTabText, categoryFilter === 'all' && styles.filterTabTextActive]}>All Categories</Text>
           </TouchableOpacity>
-        ))}
-      </View>
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={`cat-${category}`}
+              style={[styles.filterTab, categoryFilter === category && styles.filterTabActive]}
+              onPress={() => setCategoryFilter(category)}
+            >
+              <Text style={[styles.filterTabText, categoryFilter === category && styles.filterTabTextActive]}>{category}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            style={[styles.filterTab, branchFilter === 'all' && styles.filterTabActive]}
+            onPress={() => setBranchFilter('all')}
+          >
+            <Text style={[styles.filterTabText, branchFilter === 'all' && styles.filterTabTextActive]}>All Branches</Text>
+          </TouchableOpacity>
+          {branches.map((branch) => (
+            <TouchableOpacity
+              key={`branch-${branch}`}
+              style={[styles.filterTab, branchFilter === branch && styles.filterTabActive]}
+              onPress={() => setBranchFilter(branch)}
+            >
+              <Text style={[styles.filterTabText, branchFilter === branch && styles.filterTabTextActive]}>{branch}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
 
       {error && <Text style={styles.errorBanner}>{error}</Text>}
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.id ?? item.ip)}
-        renderItem={({ item }) => <DeviceCard device={item} />}
+        renderItem={({ item }) => (
+          <DeviceCard
+            device={item}
+            expanded={expandedId === String(item.id ?? item.ip)}
+            onToggle={() =>
+              setExpandedId((prev) => (prev === String(item.id ?? item.ip) ? null : String(item.id ?? item.ip)))
+            }
+            onOpenWeb={async () => {
+              const raw = item.ip.trim();
+              const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+              try {
+                await Linking.openURL(url);
+              } catch {
+                await Linking.openURL(`http://${raw}`);
+              }
+            }}
+            onOpenSsh={() => {
+              router.push({
+                pathname: '/terminal',
+                params: {
+                  host: item.ip,
+                  name: item.name,
+                },
+              });
+            }}
+          />
+        )}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -219,10 +315,10 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 2 },
   searchInput: { flex: 1, color: Colors.text, fontSize: 14 },
+  filtersScroll: { maxHeight: 52 },
+  filtersScrollContent: { paddingHorizontal: 16, paddingBottom: 8 },
   filterRow: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingBottom: 8,
     gap: 8,
   },
   filterTab: {
@@ -260,6 +356,19 @@ const styles = StyleSheet.create({
   badgeDot: { width: 6, height: 6, borderRadius: 3 },
   badgeText: { fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 8,
+    paddingVertical: 9,
+  },
+  actionWeb: { backgroundColor: Colors.accent },
+  actionSsh: { backgroundColor: Colors.orange },
+  actionBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   metaText: { fontSize: 12, color: Colors.muted },
   mono: { fontFamily: 'monospace' },
   emptyContainer: { alignItems: 'center', paddingTop: 60, gap: 10 },
