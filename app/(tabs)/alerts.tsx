@@ -158,8 +158,8 @@ export default function AlertsScreen() {
           sections={sections}
           keyExtractor={(item, index) =>
             item.type === 'device'
-              ? `device-${item.data.id ?? index}`
-              : `trunk-${(item.data as TrunkPort).device_id}-${(item.data as TrunkPort).interface_name}`
+              ? `device-${item.data.id ?? 'na'}-${(item.data as Device).ip ?? 'na'}-${index}`
+              : `trunk-${(item.data as TrunkPort).device_id}-${(item.data as TrunkPort).interface_name}-${(item.data as TrunkPort).description ?? 'na'}-${index}`
           }
           renderItem={({ item }) =>
             item.type === 'device' ? (
