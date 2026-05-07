@@ -25,7 +25,11 @@ function CustomTabBar({ state, navigation, insets }: any) {
   const bottomInset = Math.max(insets?.bottom ?? 0, 6);
 
   return (
-    <View style={[styles.tabBar, { paddingBottom: bottomInset }]}>
+    <View
+      collapsable={false}
+      pointerEvents="box-none"
+      style={[styles.tabBar, { paddingBottom: bottomInset }]}
+    >
       {state.routes.map((route: any, index: number) => {
         const isFocused = state.index === index;
         const tab = TAB_MAP[route.name];
@@ -47,6 +51,8 @@ function CustomTabBar({ state, navigation, insets }: any) {
             key={route.key}
             onPress={onPress}
             onLongPress={() => {}}
+            delayLongPress={100000}
+            collapsable={false}
             hitSlop={10}
             style={styles.tabButton}
           >
@@ -98,6 +104,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 1000,
     elevation: 1000,
+    pointerEvents: 'box-none',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -114,6 +121,7 @@ const styles = StyleSheet.create({
     gap: 2,
     minHeight: 44,
     zIndex: 1001,
+    elevation: 1001,
   },
   tabLabel: {
     fontSize: 11,
