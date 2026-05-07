@@ -117,7 +117,7 @@ export default function SettingsScreen() {
                   setApiUrl(t);
                   setTestResult(null);
                 }}
-                placeholder="http://your-server:3000"
+                placeholder="https://your-server"
                 placeholderTextColor={Colors.muted}
                 autoCapitalize="none"
                 autoCorrect={false}

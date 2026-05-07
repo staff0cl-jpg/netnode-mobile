@@ -7,7 +7,7 @@ const KEYS = {
   SESSION_TOKEN: 'netnode_session_token',
 };
 
-const DEFAULT_API_URL = 'http://your-server:3000';
+const DEFAULT_API_URL = 'https://your-server';
 
 export async function getApiUrl(): Promise<string> {
   try {
