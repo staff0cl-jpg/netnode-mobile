@@ -27,6 +27,8 @@ export default function TerminalScreen() {
   const { host, name } = useLocalSearchParams<{ host?: string; name?: string }>();
   const sessionId = useMemo(() => makeSessionId(), []);
   const socketRef = useRef<WebSocket | null>(null);
+  const pollingUrlRef = useRef<string | null>(null);
+  const pollingActiveRef = useRef(false);
   const scrollRef = useRef<ScrollView | null>(null);
 
   const [username, setUsername] = useState('admin');
@@ -39,6 +41,15 @@ export default function TerminalScreen() {
 
   useEffect(() => {
     return () => {
+      pollingActiveRef.current = false;
+      if (pollingUrlRef.current) {
+        void fetch(pollingUrlRef.current, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: `42${JSON.stringify(['ssh:disconnect', { sessionId }])}`,
+        }).catch(() => undefined);
+      }
       if (socketRef.current) {
         if (socketRef.current.readyState === WebSocket.OPEN) {
           socketRef.current.send(`42${JSON.stringify(['ssh:disconnect', { sessionId }])}`);
@@ -56,13 +67,39 @@ export default function TerminalScreen() {
     setLogs((prev) => [...prev, line]);
   };
 
+  const parseEnginePackets = (raw: string) => raw.split(String.fromCharCode(30)).filter(Boolean);
+
+  const postPollingPacket = async (url: string, packet: string) => {
+    await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: packet,
+    });
+  };
+
   const sendEvent = (event: string, payload: Record<string, unknown>) => {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN || !socketReady) return;
-    socketRef.current.send(`42${JSON.stringify([event, payload])}`);
+    if (!socketReady) return;
+    const packet = `42${JSON.stringify([event, payload])}`;
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(packet);
+      return;
+    }
+    if (pollingUrlRef.current && pollingActiveRef.current) {
+      void postPollingPacket(pollingUrlRef.current, packet).catch(() => {
+        appendLog('[NETNODE] Polling send failed');
+      });
+    }
   };
 
   const connect = async () => {
     if (!host || !username.trim()) return;
+    pollingActiveRef.current = false;
+    pollingUrlRef.current = null;
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+    }
     setConnecting(true);
     setSocketReady(false);
     setLogs([]);
@@ -86,6 +123,25 @@ export default function TerminalScreen() {
       `${fallbackBase}/socket.io/`,
       `${fallbackBase}/api/socket.io/`,
     ]));
+    const handleSocketIoEvent = (rawPacket: string) => {
+      if (!rawPacket.startsWith('42')) return;
+      try {
+        const payload = JSON.parse(rawPacket.slice(2)) as [string, { sessionId?: string; data?: string; status?: string }];
+        const [event, data] = payload;
+        if (data.sessionId !== sessionId) return;
+        if (event === 'ssh:data' && data.data != null) {
+          appendLog(String(data.data));
+        }
+        if (event === 'ssh:status') {
+          const ok = data.status === 'connected';
+          setConnected(ok);
+          setConnecting(false);
+          appendLog(ok ? '[NETNODE] SSH connected' : '[NETNODE] SSH disconnected');
+        }
+      } catch {
+        // ignore malformed frame
+      }
+    };
     let attemptIndex = 0;
     let completed = false;
 
@@ -127,6 +183,70 @@ export default function TerminalScreen() {
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
       let upgraded = false;
+      let fallbackStarted = false;
+
+      const startPollingTransport = async () => {
+        if (fallbackStarted) return;
+        fallbackStarted = true;
+        const sidPollingUrl = `${pollingUrl}&sid=${encodeURIComponent(sid)}`;
+        pollingUrlRef.current = sidPollingUrl;
+        pollingActiveRef.current = true;
+        setSocketReady(true);
+        appendLog('[NETNODE] Falling back to polling transport');
+
+        try {
+          await postPollingPacket(sidPollingUrl, '40');
+          await postPollingPacket(sidPollingUrl, `42${JSON.stringify(['ssh:connect', {
+            sessionId,
+            host,
+            username: username.trim(),
+            password,
+            port: 22,
+          }])}`);
+        } catch (e) {
+          setConnecting(false);
+          appendLog(`[NETNODE] Polling setup failed: ${(e as Error).message}`);
+          return;
+        }
+
+        while (pollingActiveRef.current && pollingUrlRef.current === sidPollingUrl) {
+          try {
+            const resp = await fetch(sidPollingUrl, {
+              method: 'GET',
+              credentials: 'include',
+              headers: { Accept: '*/*' },
+            });
+            const body = await resp.text();
+            if (!resp.ok) {
+              throw new Error(`HTTP ${resp.status}`);
+            }
+            const packets = parseEnginePackets(body);
+            for (const packet of packets) {
+              if (packet === '2') {
+                await postPollingPacket(sidPollingUrl, '3');
+                continue;
+              }
+              if (packet === '40') continue;
+              if (packet === '41') {
+                pollingActiveRef.current = false;
+                setConnected(false);
+                setSocketReady(false);
+                setConnecting(false);
+                appendLog('[NETNODE] Polling disconnected');
+                return;
+              }
+              handleSocketIoEvent(packet);
+            }
+          } catch (e) {
+            pollingActiveRef.current = false;
+            setConnected(false);
+            setSocketReady(false);
+            setConnecting(false);
+            appendLog(`[NETNODE] Polling receive failed: ${(e as Error).message}`);
+            return;
+          }
+        }
+      };
 
       socket.onopen = () => {
         appendLog('[NETNODE] Socket connected');
@@ -164,23 +284,7 @@ export default function TerminalScreen() {
           socket.send('3');
           return;
         }
-        if (!msg.startsWith('42')) return;
-        try {
-          const payload = JSON.parse(msg.slice(2)) as [string, { sessionId?: string; data?: string; status?: string }];
-          const [event, data] = payload;
-          if (data.sessionId !== sessionId) return;
-          if (event === 'ssh:data' && data.data != null) {
-            appendLog(String(data.data));
-          }
-          if (event === 'ssh:status') {
-            const ok = data.status === 'connected';
-            setConnected(ok);
-            setConnecting(false);
-            appendLog(ok ? '[NETNODE] SSH connected' : '[NETNODE] SSH disconnected');
-          }
-        } catch {
-          // ignore malformed frame
-        }
+        handleSocketIoEvent(msg);
       };
 
       socket.onerror = () => {
@@ -194,8 +298,12 @@ export default function TerminalScreen() {
         appendLog(`[NETNODE] Socket disconnected (code: ${evt.code}${detail})`);
 
         if (!completed) {
+          if (evt.code === 1006 || evt.code === 1002 || /400/i.test(evt.reason || '')) {
+            void startPollingTransport();
+            return;
+          }
           attemptIndex += 1;
-          tryConnect();
+          void tryConnect();
           return;
         }
 
