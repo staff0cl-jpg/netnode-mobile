@@ -65,6 +65,21 @@ class ApiError extends Error {
   }
 }
 
+function looksLikeHtml(text: string): boolean {
+  const sample = text.trim().slice(0, 200).toLowerCase();
+  return sample.includes('<html') || sample.includes('<body') || sample.includes('<!doctype');
+}
+
+function friendlyHttpMessage(status: number): string {
+  if (status === 502 || status === 503 || status === 504) {
+    return 'Server is temporarily unavailable. Please try again in a moment.';
+  }
+  if (status >= 500) {
+    return 'Server error. Please try again later.';
+  }
+  return `Request failed (HTTP ${status}).`;
+}
+
 async function buildHeaders(): Promise<Record<string, string>> {
   const session = await getSession();
   const headers: Record<string, string> = {
@@ -116,10 +131,17 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       if (response.status === 403) {
         throw new ApiError(403, 'Access denied for your role.');
       }
-      throw new ApiError(response.status, text || `HTTP ${response.status}`);
+      if (response.status >= 500 || looksLikeHtml(text || '')) {
+        throw new ApiError(response.status, friendlyHttpMessage(response.status));
+      }
+      throw new ApiError(response.status, text || friendlyHttpMessage(response.status));
     }
 
-    return response.json() as Promise<T>;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new Error('Unexpected server response. Please try again.');
+    }
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof ApiError) throw error;

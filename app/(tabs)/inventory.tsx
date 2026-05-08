@@ -111,6 +111,7 @@ export default function InventoryScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCategoryMenu, setShowCategoryMenu] = useState(false);
   const [showBranchMenu, setShowBranchMenu] = useState(false);
+  const sessionExpired = Boolean(error?.toLowerCase().includes('session expired'));
 
   const fetchDevices = useCallback(async () => {
     setError(null);
@@ -269,7 +270,16 @@ export default function InventoryScreen() {
         </View>
       )}
 
-      {error && <Text style={styles.errorBanner}>{error}</Text>}
+      {error && (
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorBanner}>{error}</Text>
+          {sessionExpired && (
+            <TouchableOpacity style={styles.loginBtn} onPress={() => router.replace('/login')}>
+              <Text style={styles.loginBtnText}>Log in</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <FlatList
         data={filtered}
@@ -406,7 +416,16 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   dropdownItemText: { fontSize: 13, color: Colors.text },
-  errorBanner: { marginHorizontal: 16, marginBottom: 8, color: Colors.red, fontSize: 12 },
+  errorWrap: { marginHorizontal: 16, marginBottom: 8, gap: 8 },
+  errorBanner: { color: Colors.red, fontSize: 12 },
+  loginBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: Colors.orange,
+  },
+  loginBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   listContent: { paddingHorizontal: 16, paddingBottom: 96, gap: 8 },
   card: {
     backgroundColor: Colors.card,

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getDashboardMetrics, type DashboardMetrics, type Device, type TrunkPort } from '../../lib/api';
 import { Colors } from '../../constants/colors';
 
@@ -71,6 +72,7 @@ export default function AlertsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sessionExpired = Boolean(error?.toLowerCase().includes('session expired'));
 
   const fetchData = useCallback(async () => {
     setError(null);
@@ -145,7 +147,16 @@ export default function AlertsScreen() {
         )}
       </View>
 
-      {error && <Text style={styles.errorBanner}>{error}</Text>}
+      {error && (
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorBanner}>{error}</Text>
+          {sessionExpired && (
+            <TouchableOpacity style={styles.loginBtn} onPress={() => router.replace('/login')}>
+              <Text style={styles.loginBtnText}>Log in</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {totalAlerts === 0 && !error ? (
         <View style={styles.emptyContainer}>
@@ -221,6 +232,15 @@ const styles = StyleSheet.create({
   },
   alertCountText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   errorBanner: { marginHorizontal: 16, marginBottom: 8, color: Colors.red, fontSize: 12 },
+  errorWrap: { marginHorizontal: 16, marginBottom: 8, gap: 8 },
+  loginBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: Colors.orange,
+  },
+  loginBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   listContent: { paddingHorizontal: 16, paddingBottom: 96 },
   sectionHeader: {
     flexDirection: 'row',

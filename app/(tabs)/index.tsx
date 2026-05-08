@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getDashboardMetrics, type DashboardMetrics, type Device } from '../../lib/api';
 import { Colors } from '../../constants/colors';
 
@@ -94,6 +95,7 @@ export default function DashboardScreen() {
     setRefreshing(true);
     fetchData(true);
   }, [fetchData]);
+  const sessionExpired = Boolean(error?.toLowerCase().includes('session expired'));
 
   if (loading) {
     return (
@@ -109,9 +111,16 @@ export default function DashboardScreen() {
       <SafeAreaView style={styles.centered}>
         <Ionicons name="cloud-offline-outline" size={48} color={Colors.muted} />
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => fetchData()}>
-          <Text style={styles.retryBtnText}>Retry</Text>
-        </TouchableOpacity>
+        <View style={styles.errorActions}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => fetchData()}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+          {sessionExpired && (
+            <TouchableOpacity style={[styles.retryBtn, styles.loginBtn]} onPress={() => router.replace('/login')}>
+              <Text style={styles.retryBtnText}>Log in</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </SafeAreaView>
     );
   }
@@ -240,6 +249,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  errorActions: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  loginBtn: { backgroundColor: Colors.orange },
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
