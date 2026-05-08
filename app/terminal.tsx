@@ -231,6 +231,19 @@ export default function TerminalScreen() {
         appendLog('[NETNODE] Falling back to polling transport');
         focusInputSoon();
         let connectEventSent = false;
+        const sendSshConnectOnce = async () => {
+          if (connectEventSent) return;
+          connectEventSent = true;
+          await postPollingPacket(
+            sidPollingUrl,
+            `42${JSON.stringify(['ssh:connect', {
+              sessionId,
+              host,
+              port: 22,
+            }])}`,
+          );
+          appendLog('[NETNODE] SSH connect requested');
+        };
 
         const receiveLoop = async () => {
           while (pollingActiveRef.current && pollingUrlRef.current === sidPollingUrl) {
@@ -251,18 +264,7 @@ export default function TerminalScreen() {
                   continue;
                 }
                 if (packet === '40') {
-                  if (!connectEventSent) {
-                    connectEventSent = true;
-                    await postPollingPacket(
-                      sidPollingUrl,
-                      `42${JSON.stringify(['ssh:connect', {
-                        sessionId,
-                        host,
-                        port: 22,
-                      }])}`,
-                    );
-                    appendLog('[NETNODE] SSH connect requested');
-                  }
+                  await sendSshConnectOnce();
                   continue;
                 }
                 if (packet === '41') {
@@ -290,6 +292,9 @@ export default function TerminalScreen() {
 
         try {
           await postPollingPacket(sidPollingUrl, '40');
+          // Some proxies/backends do not emit explicit namespace ack quickly on polling.
+          // Fire connect request once right away and keep ack-based fallback above.
+          await sendSshConnectOnce();
         } catch (e) {
           pollingActiveRef.current = false;
           setSocketReady(false);
