@@ -33,6 +33,9 @@ export default function TerminalScreen() {
   const pollingActiveRef = useRef(false);
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
+  const scrollYRef = useRef(0);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
 
   const [input, setInput] = useState('');
   const [connected, setConnected] = useState(false);
@@ -42,6 +45,7 @@ export default function TerminalScreen() {
   const [pendingUsername, setPendingUsername] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
+  const [showKeypad, setShowKeypad] = useState(false);
 
   const focusInputSoon = () => {
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -112,6 +116,18 @@ export default function TerminalScreen() {
         appendLog('[NETNODE] Polling send failed');
       });
     }
+  };
+
+  const sendRawInput = (raw: string) => {
+    if (!socketReady || authStage !== 'ready') return;
+    sendEvent('ssh:input', { sessionId, input: raw });
+  };
+
+  const scrollBy = (delta: number) => {
+    const maxY = Math.max(contentHeightRef.current - viewportHeightRef.current, 0);
+    const target = Math.max(0, Math.min(scrollYRef.current + delta, maxY));
+    scrollRef.current?.scrollTo({ y: target, animated: true });
+    scrollYRef.current = target;
   };
 
   const connect = async (clearLogs = true) => {
@@ -428,6 +444,7 @@ export default function TerminalScreen() {
       ? 'ssh connected'
       : 'awaiting device prompt';
   const statusColor = connected ? '#7be495' : socketReady ? '#e9c46a' : Colors.muted;
+  const keypadDisabled = !socketReady || authStage !== 'ready';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -436,21 +453,79 @@ export default function TerminalScreen() {
           <Text style={styles.back}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{name || host || 'SSH Terminal'}</Text>
+        <TouchableOpacity
+          style={[styles.keysToggleBtn, showKeypad && styles.keysToggleBtnActive]}
+          onPress={() => setShowKeypad((v) => !v)}
+        >
+          <Text style={styles.keysToggleText}>Keys</Text>
+        </TouchableOpacity>
         {connecting ? <ActivityIndicator color={Colors.accent} /> : null}
       </View>
 
-      <TouchableOpacity
-        activeOpacity={1}
-        style={styles.terminal}
-        onPress={() => {
-          inputRef.current?.focus();
-          if (!socketReady && !connecting) {
-            appendLog('[NETNODE] Reconnecting transport...');
-            void connect(false);
-          }
-        }}
-      >
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.terminalContent} keyboardShouldPersistTaps="always">
+      {showKeypad && (
+        <View style={styles.keypadWrap}>
+          <View style={styles.keypadRow}>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\u001b[A')}>
+              <Text style={styles.keyBtnText}>↑</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\u001b[B')}>
+              <Text style={styles.keyBtnText}>↓</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\u001b[D')}>
+              <Text style={styles.keyBtnText}>←</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\u001b[C')}>
+              <Text style={styles.keyBtnText}>→</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.keypadRow}>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\u0003')}>
+              <Text style={styles.keyBtnText}>Ctrl+C</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\t')}>
+              <Text style={styles.keyBtnText}>Tab</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\n')}>
+              <Text style={styles.keyBtnText}>Enter</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.keyBtn, keypadDisabled && styles.keyBtnDisabled]} disabled={keypadDisabled} onPress={() => sendRawInput('\u001b')}>
+              <Text style={styles.keyBtnText}>Esc</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.keypadRow}>
+            <TouchableOpacity style={styles.keyBtn} onPress={() => scrollBy(-240)}>
+              <Text style={styles.keyBtnText}>Scroll ↑</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keyBtn} onPress={() => scrollBy(240)}>
+              <Text style={styles.keyBtnText}>Scroll ↓</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.terminal}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.terminalContent}
+          keyboardShouldPersistTaps="always"
+          scrollEventThrottle={16}
+          onScroll={(evt) => {
+            scrollYRef.current = evt.nativeEvent.contentOffset.y;
+          }}
+          onLayout={(evt) => {
+            viewportHeightRef.current = evt.nativeEvent.layout.height;
+          }}
+          onContentSizeChange={(_, height) => {
+            contentHeightRef.current = height;
+          }}
+          onTouchStart={() => {
+            inputRef.current?.focus();
+            if (!socketReady && !connecting) {
+              appendLog('[NETNODE] Reconnecting transport...');
+              void connect(false);
+            }
+          }}
+        >
           <View style={styles.metaLine}>
             <Text style={styles.metaHost}>{host ?? 'unknown-host'}</Text>
             <Text style={[styles.metaStatus, { color: statusColor }]}>{statusLabel}</Text>
@@ -476,7 +551,7 @@ export default function TerminalScreen() {
             />
           </View>
         </ScrollView>
-      </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -486,6 +561,42 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: { color: Colors.accent, fontSize: 14, fontWeight: '600' },
   title: { flex: 1, color: Colors.heading, fontSize: 17, fontWeight: '700' },
+  keysToggleBtn: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  keysToggleBtnActive: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accent + '22',
+  },
+  keysToggleText: { color: Colors.text, fontSize: 12, fontWeight: '600' },
+  keypadWrap: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+    padding: 8,
+    gap: 6,
+  },
+  keypadRow: { flexDirection: 'row', gap: 6 },
+  keyBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  keyBtnDisabled: { opacity: 0.5 },
+  keyBtnText: { color: Colors.text, fontSize: 12, fontWeight: '600' },
   terminal: { flex: 1, marginHorizontal: 12, marginBottom: 8, backgroundColor: '#0b0f14', borderWidth: 1, borderColor: Colors.border, borderRadius: 10 },
   terminalContent: { padding: 10, minHeight: 220 },
   metaLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#1b2430' },
