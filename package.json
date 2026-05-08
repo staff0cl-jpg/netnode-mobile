@@ -1,6 +1,6 @@
 {
   "name": "netnode-mobile",
-  "version": "1.07",
+  "version": "1.08",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
