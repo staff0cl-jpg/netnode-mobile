@@ -37,6 +37,7 @@ export default function TerminalScreen() {
   const [connecting, setConnecting] = useState(false);
   const [socketReady, setSocketReady] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -102,7 +103,7 @@ export default function TerminalScreen() {
     }
   };
 
-  const connect = async () => {
+  const connect = async (clearLogs = true) => {
     if (!host) return;
     pollingActiveRef.current = false;
     pollingUrlRef.current = null;
@@ -112,7 +113,7 @@ export default function TerminalScreen() {
     }
     setConnecting(true);
     setSocketReady(false);
-    setLogs([]);
+    if (clearLogs) setLogs([]);
     setConnected(false);
 
     const apiUrl = await getApiUrl();
@@ -206,6 +207,48 @@ export default function TerminalScreen() {
         setSocketReady(true);
         appendLog('[NETNODE] Falling back to polling transport');
 
+        const receiveLoop = async () => {
+          while (pollingActiveRef.current && pollingUrlRef.current === sidPollingUrl) {
+            try {
+              const resp = await fetch(sidPollingUrl, {
+                method: 'GET',
+                credentials: 'include',
+                headers: { Accept: '*/*' },
+              });
+              const body = await resp.text();
+              if (!resp.ok) {
+                throw new Error(`HTTP ${resp.status}`);
+              }
+              const packets = parseEnginePackets(body);
+              for (const packet of packets) {
+                if (packet === '2') {
+                  await postPollingPacket(sidPollingUrl, '3');
+                  continue;
+                }
+                if (packet === '40') continue;
+                if (packet === '41') {
+                  pollingActiveRef.current = false;
+                  setConnected(false);
+                  setSocketReady(false);
+                  setConnecting(false);
+                  appendLog('[NETNODE] Polling disconnected');
+                  return;
+                }
+                handleSocketIoEvent(packet);
+              }
+            } catch (e) {
+              pollingActiveRef.current = false;
+              setConnected(false);
+              setSocketReady(false);
+              setConnecting(false);
+              appendLog(`[NETNODE] Polling receive failed: ${(e as Error).message}`);
+              return;
+            }
+          }
+        };
+
+        void receiveLoop();
+
         try {
           await postPollingPacket(sidPollingUrl, '40');
           await postPollingPacket(
@@ -217,47 +260,11 @@ export default function TerminalScreen() {
             }])}`,
           );
         } catch (e) {
+          pollingActiveRef.current = false;
+          setSocketReady(false);
           setConnecting(false);
           appendLog(`[NETNODE] Polling setup failed: ${(e as Error).message}`);
           return;
-        }
-
-        while (pollingActiveRef.current && pollingUrlRef.current === sidPollingUrl) {
-          try {
-            const resp = await fetch(sidPollingUrl, {
-              method: 'GET',
-              credentials: 'include',
-              headers: { Accept: '*/*' },
-            });
-            const body = await resp.text();
-            if (!resp.ok) {
-              throw new Error(`HTTP ${resp.status}`);
-            }
-            const packets = parseEnginePackets(body);
-            for (const packet of packets) {
-              if (packet === '2') {
-                await postPollingPacket(sidPollingUrl, '3');
-                continue;
-              }
-              if (packet === '40') continue;
-              if (packet === '41') {
-                pollingActiveRef.current = false;
-                setConnected(false);
-                setSocketReady(false);
-                setConnecting(false);
-                appendLog('[NETNODE] Polling disconnected');
-                return;
-              }
-              handleSocketIoEvent(packet);
-            }
-          } catch (e) {
-            pollingActiveRef.current = false;
-            setConnected(false);
-            setSocketReady(false);
-            setConnecting(false);
-            appendLog(`[NETNODE] Polling receive failed: ${(e as Error).message}`);
-            return;
-          }
         }
       };
 
@@ -327,6 +334,12 @@ export default function TerminalScreen() {
     void tryConnect();
   };
 
+  useEffect(() => {
+    if (!host || hasAttemptedAutoConnect) return;
+    setHasAttemptedAutoConnect(true);
+    void connect(true);
+  }, [host, hasAttemptedAutoConnect]);
+
   const sendInput = () => {
     const line = input;
     if (!socketReady) return;
@@ -354,13 +367,7 @@ export default function TerminalScreen() {
           <Text style={styles.back}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{name || host || 'SSH Terminal'}</Text>
-        <TouchableOpacity
-          style={[styles.connectHeaderBtn, (connecting || socketReady) && styles.connectBtnDisabled]}
-          onPress={connect}
-          disabled={connecting || socketReady}
-        >
-          {connecting ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectHeaderBtnText}>{socketReady ? 'Ready' : 'Connect'}</Text>}
-        </TouchableOpacity>
+        {connecting ? <ActivityIndicator color={Colors.accent} /> : null}
       </View>
 
       <TouchableOpacity activeOpacity={1} style={styles.terminal} onPress={() => inputRef.current?.focus()}>
@@ -400,9 +407,6 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: { color: Colors.accent, fontSize: 14, fontWeight: '600' },
   title: { flex: 1, color: Colors.heading, fontSize: 17, fontWeight: '700' },
-  connectHeaderBtn: { backgroundColor: Colors.accent, borderRadius: 8, minHeight: 34, minWidth: 82, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  connectBtnDisabled: { opacity: 0.7 },
-  connectHeaderBtnText: { color: '#fff', fontWeight: '600' },
   terminal: { flex: 1, marginHorizontal: 12, marginBottom: 8, backgroundColor: '#0b0f14', borderWidth: 1, borderColor: Colors.border, borderRadius: 10 },
   terminalContent: { padding: 10, minHeight: 220 },
   metaLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#1b2430' },
