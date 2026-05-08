@@ -39,6 +39,11 @@ export default function TerminalScreen() {
   const [logs, setLogs] = useState<string[]>([]);
   const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
 
+  const focusInputSoon = () => {
+    setTimeout(() => inputRef.current?.focus(), 50);
+    setTimeout(() => inputRef.current?.focus(), 250);
+  };
+
   useEffect(() => {
     return () => {
       pollingActiveRef.current = false;
@@ -64,7 +69,7 @@ export default function TerminalScreen() {
   }, [logs]);
 
   useEffect(() => {
-    if (socketReady) inputRef.current?.focus();
+    if (socketReady) focusInputSoon();
   }, [socketReady]);
 
   const appendLog = (line: string) => {
@@ -201,11 +206,30 @@ export default function TerminalScreen() {
       const startPollingTransport = async () => {
         if (fallbackStarted) return;
         fallbackStarted = true;
-        const sidPollingUrl = `${pollingUrl}&sid=${encodeURIComponent(sid)}`;
+        let fallbackSid = sid;
+        try {
+          const openResp = await fetch(pollingUrl, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { Accept: '*/*' },
+          });
+          const openBody = await openResp.text();
+          if (!openResp.ok) throw new Error(`HTTP ${openResp.status}`);
+          const openPacket = extractEngineOpenPacket(openBody);
+          if (!openPacket?.sid) throw new Error('missing sid');
+          fallbackSid = openPacket.sid;
+        } catch (e) {
+          setConnecting(false);
+          appendLog(`[NETNODE] Polling reopen failed: ${(e as Error).message}`);
+          return;
+        }
+
+        const sidPollingUrl = `${pollingUrl}&sid=${encodeURIComponent(fallbackSid)}`;
         pollingUrlRef.current = sidPollingUrl;
         pollingActiveRef.current = true;
         setSocketReady(true);
         appendLog('[NETNODE] Falling back to polling transport');
+        focusInputSoon();
 
         const receiveLoop = async () => {
           while (pollingActiveRef.current && pollingUrlRef.current === sidPollingUrl) {
@@ -376,7 +400,7 @@ export default function TerminalScreen() {
             <Text style={styles.metaHost}>{host ?? 'unknown-host'}</Text>
             <Text style={[styles.metaStatus, { color: statusColor }]}>{statusLabel}</Text>
           </View>
-          {logs.length === 0 ? <Text style={styles.empty}>Press Connect to start SSH session</Text> : logs.map((line, idx) => <Text key={idx} style={styles.line}>{line}</Text>)}
+          {logs.length === 0 ? <Text style={styles.empty}>Connecting...</Text> : logs.map((line, idx) => <Text key={idx} style={styles.line}>{line}</Text>)}
           <View style={styles.terminalInputRow}>
             <Text style={styles.prompt}>{promptLabel}</Text>
             <TextInput
