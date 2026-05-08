@@ -23,6 +23,8 @@ function extractEngineOpenPacket(raw: string) {
   return null;
 }
 
+type AuthStage = 'idle' | 'username' | 'password' | 'ready';
+
 export default function TerminalScreen() {
   const { host, name } = useLocalSearchParams<{ host?: string; name?: string }>();
   const sessionId = useMemo(() => makeSessionId(), []);
@@ -30,13 +32,14 @@ export default function TerminalScreen() {
   const pollingUrlRef = useRef<string | null>(null);
   const pollingActiveRef = useRef(false);
   const scrollRef = useRef<ScrollView | null>(null);
+  const inputRef = useRef<TextInput | null>(null);
 
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('');
+  const [pendingUsername, setPendingUsername] = useState('');
   const [input, setInput] = useState('');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [socketReady, setSocketReady] = useState(false);
+  const [authStage, setAuthStage] = useState<AuthStage>('idle');
   const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
@@ -62,6 +65,10 @@ export default function TerminalScreen() {
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [logs]);
+
+  useEffect(() => {
+    if (socketReady) inputRef.current?.focus();
+  }, [socketReady, authStage]);
 
   const appendLog = (line: string) => {
     setLogs((prev) => [...prev, line]);
@@ -92,8 +99,15 @@ export default function TerminalScreen() {
     }
   };
 
+  const beginInteractiveAuth = () => {
+    setAuthStage('username');
+    setConnecting(false);
+    appendLog('[NETNODE] Transport ready');
+    appendLog('login:');
+  };
+
   const connect = async () => {
-    if (!host || !username.trim()) return;
+    if (!host) return;
     pollingActiveRef.current = false;
     pollingUrlRef.current = null;
     if (socketRef.current) {
@@ -102,6 +116,8 @@ export default function TerminalScreen() {
     }
     setConnecting(true);
     setSocketReady(false);
+    setAuthStage('idle');
+    setPendingUsername('');
     setLogs([]);
     setConnected(false);
 
@@ -136,7 +152,9 @@ export default function TerminalScreen() {
           const ok = data.status === 'connected';
           setConnected(ok);
           setConnecting(false);
+          setAuthStage(ok ? 'ready' : 'username');
           appendLog(ok ? '[NETNODE] SSH connected' : '[NETNODE] SSH disconnected');
+          if (!ok) appendLog('login:');
         }
       } catch {
         // ignore malformed frame
@@ -193,16 +211,10 @@ export default function TerminalScreen() {
         pollingActiveRef.current = true;
         setSocketReady(true);
         appendLog('[NETNODE] Falling back to polling transport');
+        beginInteractiveAuth();
 
         try {
           await postPollingPacket(sidPollingUrl, '40');
-          await postPollingPacket(sidPollingUrl, `42${JSON.stringify(['ssh:connect', {
-            sessionId,
-            host,
-            username: username.trim(),
-            password,
-            port: 22,
-          }])}`);
         } catch (e) {
           setConnecting(false);
           appendLog(`[NETNODE] Polling setup failed: ${(e as Error).message}`);
@@ -269,15 +281,7 @@ export default function TerminalScreen() {
           if (!upgraded) return;
           setSocketReady(true);
           completed = true;
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(`42${JSON.stringify(['ssh:connect', {
-              sessionId,
-              host,
-              username: username.trim(),
-              password,
-              port: 22,
-            }])}`);
-          }
+          beginInteractiveAuth();
           return;
         }
         if (msg === '2') {
@@ -315,12 +319,66 @@ export default function TerminalScreen() {
   };
 
   const sendInput = () => {
-    const cmd = input.trim();
-    if (!cmd || !connected) return;
-    sendEvent('ssh:input', { sessionId, input: `${cmd}\n` });
-    appendLog(`$ ${cmd}`);
+    const line = input;
+    if (!socketReady) return;
+
+    if (authStage === 'username') {
+      const username = line.trim();
+      if (!username) return;
+      setPendingUsername(username);
+      appendLog(`login: ${username}`);
+      appendLog('password:');
+      setAuthStage('password');
+      setInput('');
+      return;
+    }
+
+    if (authStage === 'password') {
+      if (!pendingUsername) return;
+      appendLog('password: ********');
+      appendLog('[NETNODE] Authorizing...');
+      setAuthStage('idle');
+      setConnecting(true);
+      sendEvent('ssh:connect', {
+        sessionId,
+        host,
+        username: pendingUsername,
+        password: line,
+        port: 22,
+      });
+      setInput('');
+      return;
+    }
+
+    if (authStage !== 'ready') return;
+    if (!line.trim()) return;
+    sendEvent('ssh:input', { sessionId, input: `${line}\n` });
+    appendLog(`$ ${line}`);
     setInput('');
   };
+
+  const promptLabel = authStage === 'username' ? 'login:' : authStage === 'password' ? 'password:' : connected ? '$' : '>';
+  const inputPlaceholder = authStage === 'username'
+    ? 'enter username'
+    : authStage === 'password'
+      ? 'enter password'
+      : connected
+        ? 'type command'
+        : socketReady
+          ? 'waiting auth'
+          : 'connect first';
+  const statusLabel = !socketReady
+    ? connecting
+      ? 'transport connecting'
+      : 'disconnected'
+    : authStage === 'ready'
+      ? connected
+        ? 'ssh connected'
+        : 'ready'
+      : authStage === 'password'
+        ? 'awaiting password'
+        : 'awaiting login';
+  const statusColor = connected ? '#7be495' : socketReady ? '#e9c46a' : Colors.muted;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -329,63 +387,63 @@ export default function TerminalScreen() {
           <Text style={styles.back}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{name || host || 'SSH Terminal'}</Text>
-      </View>
-
-      <View style={styles.connectCard}>
-        <Text style={styles.label}>Host</Text>
-        <Text style={styles.hostValue}>{host}</Text>
-        <Text style={styles.label}>Username</Text>
-        <TextInput style={styles.input} value={username} onChangeText={setUsername} autoCapitalize="none" />
-        <Text style={styles.label}>Password</Text>
-        <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
         <TouchableOpacity
-          style={[styles.connectBtn, (connecting || connected) && styles.connectBtnDisabled]}
+          style={[styles.connectHeaderBtn, (connecting || socketReady) && styles.connectBtnDisabled]}
           onPress={connect}
-          disabled={connecting || connected}
+          disabled={connecting || socketReady}
         >
-          {connecting ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectBtnText}>{connected ? 'Connected' : 'Connect'}</Text>}
+          {connecting ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectHeaderBtnText}>{socketReady ? 'Ready' : 'Connect'}</Text>}
         </TouchableOpacity>
       </View>
 
-      <ScrollView ref={scrollRef} style={styles.terminal} contentContainerStyle={styles.terminalContent}>
-        {logs.length === 0 ? <Text style={styles.empty}>No output yet</Text> : logs.map((line, idx) => <Text key={idx} style={styles.line}>{line}</Text>)}
-      </ScrollView>
-
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.commandInput}
-          value={input}
-          onChangeText={setInput}
-          placeholder="show version"
-          placeholderTextColor={Colors.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={connected}
-          returnKeyType="send"
-          blurOnSubmit={false}
-          onSubmitEditing={sendInput}
-        />
-      </View>
+      <TouchableOpacity activeOpacity={1} style={styles.terminal} onPress={() => inputRef.current?.focus()}>
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.terminalContent} keyboardShouldPersistTaps="always">
+          <View style={styles.metaLine}>
+            <Text style={styles.metaHost}>{host ?? 'unknown-host'}</Text>
+            <Text style={[styles.metaStatus, { color: statusColor }]}>{statusLabel}</Text>
+          </View>
+          {logs.length === 0 ? <Text style={styles.empty}>Press Connect to start SSH session</Text> : logs.map((line, idx) => <Text key={idx} style={styles.line}>{line}</Text>)}
+          <View style={styles.terminalInputRow}>
+            <Text style={styles.prompt}>{promptLabel}</Text>
+            <TextInput
+              ref={inputRef}
+              style={styles.terminalInput}
+              value={input}
+              onChangeText={setInput}
+              placeholder={inputPlaceholder}
+              placeholderTextColor={Colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              editable={socketReady}
+              secureTextEntry={authStage === 'password'}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              onSubmitEditing={sendInput}
+            />
+          </View>
+        </ScrollView>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  header: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: { color: Colors.accent, fontSize: 14, fontWeight: '600' },
-  title: { color: Colors.heading, fontSize: 18, fontWeight: '700' },
-  connectCard: { marginHorizontal: 16, padding: 12, borderRadius: 10, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
-  label: { color: Colors.muted, fontSize: 12, marginTop: 6, marginBottom: 4 },
-  hostValue: { color: Colors.text, fontSize: 13, fontFamily: 'monospace' },
-  input: { backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, color: Colors.text, paddingHorizontal: 10, paddingVertical: 8 },
-  connectBtn: { marginTop: 10, backgroundColor: Colors.accent, borderRadius: 8, minHeight: 38, alignItems: 'center', justifyContent: 'center' },
+  title: { flex: 1, color: Colors.heading, fontSize: 17, fontWeight: '700' },
+  connectHeaderBtn: { backgroundColor: Colors.accent, borderRadius: 8, minHeight: 34, minWidth: 82, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   connectBtnDisabled: { opacity: 0.7 },
-  connectBtnText: { color: '#fff', fontWeight: '600' },
-  terminal: { flex: 1, margin: 16, marginBottom: 8, backgroundColor: '#0f1115', borderWidth: 1, borderColor: Colors.border, borderRadius: 10 },
-  terminalContent: { padding: 10, minHeight: 180 },
+  connectHeaderBtnText: { color: '#fff', fontWeight: '600' },
+  terminal: { flex: 1, marginHorizontal: 12, marginBottom: 8, backgroundColor: '#0b0f14', borderWidth: 1, borderColor: Colors.border, borderRadius: 10 },
+  terminalContent: { padding: 10, minHeight: 220 },
+  metaLine: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#1b2430' },
+  metaHost: { color: '#91a7c0', fontFamily: 'monospace', fontSize: 11 },
+  metaStatus: { fontFamily: 'monospace', fontSize: 11 },
   empty: { color: Colors.muted, fontFamily: 'monospace', fontSize: 12 },
   line: { color: '#d8dee9', fontFamily: 'monospace', fontSize: 12, marginBottom: 2 },
-  inputRow: { paddingHorizontal: 16, paddingBottom: 14 },
-  commandInput: { flex: 1, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, color: Colors.text, paddingHorizontal: 12, paddingVertical: 10 },
+  terminalInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingBottom: 2 },
+  prompt: { color: '#7ec8ff', fontFamily: 'monospace', fontSize: 12 },
+  terminalInput: { flex: 1, color: '#d8dee9', fontFamily: 'monospace', fontSize: 12, paddingVertical: 0 },
 });
