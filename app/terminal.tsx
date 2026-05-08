@@ -23,8 +23,6 @@ function extractEngineOpenPacket(raw: string) {
   return null;
 }
 
-type AuthStage = 'idle' | 'username' | 'password' | 'ready';
-
 export default function TerminalScreen() {
   const { host, name } = useLocalSearchParams<{ host?: string; name?: string }>();
   const sessionId = useMemo(() => makeSessionId(), []);
@@ -34,12 +32,10 @@ export default function TerminalScreen() {
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
 
-  const [pendingUsername, setPendingUsername] = useState('');
   const [input, setInput] = useState('');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [socketReady, setSocketReady] = useState(false);
-  const [authStage, setAuthStage] = useState<AuthStage>('idle');
   const [logs, setLogs] = useState<string[]>([]);
 
   useEffect(() => {
@@ -68,10 +64,17 @@ export default function TerminalScreen() {
 
   useEffect(() => {
     if (socketReady) inputRef.current?.focus();
-  }, [socketReady, authStage]);
+  }, [socketReady]);
 
   const appendLog = (line: string) => {
     setLogs((prev) => [...prev, line]);
+  };
+
+  const handleSshErrorLine = (line: string) => {
+    const normalized = line.toLowerCase();
+    if (!normalized.includes('ssh error')) return;
+    setConnected(false);
+    setConnecting(false);
   };
 
   const parseEnginePackets = (raw: string) => raw.split(String.fromCharCode(30)).filter(Boolean);
@@ -99,13 +102,6 @@ export default function TerminalScreen() {
     }
   };
 
-  const beginInteractiveAuth = () => {
-    setAuthStage('username');
-    setConnecting(false);
-    appendLog('[NETNODE] Transport ready');
-    appendLog('login:');
-  };
-
   const connect = async () => {
     if (!host) return;
     pollingActiveRef.current = false;
@@ -116,8 +112,6 @@ export default function TerminalScreen() {
     }
     setConnecting(true);
     setSocketReady(false);
-    setAuthStage('idle');
-    setPendingUsername('');
     setLogs([]);
     setConnected(false);
 
@@ -146,15 +140,15 @@ export default function TerminalScreen() {
         const [event, data] = payload;
         if (data.sessionId !== sessionId) return;
         if (event === 'ssh:data' && data.data != null) {
-          appendLog(String(data.data));
+          const text = String(data.data);
+          appendLog(text);
+          handleSshErrorLine(text);
         }
         if (event === 'ssh:status') {
           const ok = data.status === 'connected';
           setConnected(ok);
           setConnecting(false);
-          setAuthStage(ok ? 'ready' : 'username');
           appendLog(ok ? '[NETNODE] SSH connected' : '[NETNODE] SSH disconnected');
-          if (!ok) appendLog('login:');
         }
       } catch {
         // ignore malformed frame
@@ -211,10 +205,17 @@ export default function TerminalScreen() {
         pollingActiveRef.current = true;
         setSocketReady(true);
         appendLog('[NETNODE] Falling back to polling transport');
-        beginInteractiveAuth();
 
         try {
           await postPollingPacket(sidPollingUrl, '40');
+          await postPollingPacket(
+            sidPollingUrl,
+            `42${JSON.stringify(['ssh:connect', {
+              sessionId,
+              host,
+              port: 22,
+            }])}`,
+          );
         } catch (e) {
           setConnecting(false);
           appendLog(`[NETNODE] Polling setup failed: ${(e as Error).message}`);
@@ -281,7 +282,15 @@ export default function TerminalScreen() {
           if (!upgraded) return;
           setSocketReady(true);
           completed = true;
-          beginInteractiveAuth();
+          appendLog('[NETNODE] Transport ready');
+          setConnecting(true);
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(`42${JSON.stringify(['ssh:connect', {
+              sessionId,
+              host,
+              port: 22,
+            }])}`);
+          }
           return;
         }
         if (msg === '2') {
@@ -321,63 +330,21 @@ export default function TerminalScreen() {
   const sendInput = () => {
     const line = input;
     if (!socketReady) return;
-
-    if (authStage === 'username') {
-      const username = line.trim();
-      if (!username) return;
-      setPendingUsername(username);
-      appendLog(`login: ${username}`);
-      appendLog('password:');
-      setAuthStage('password');
-      setInput('');
-      return;
-    }
-
-    if (authStage === 'password') {
-      if (!pendingUsername) return;
-      appendLog('password: ********');
-      appendLog('[NETNODE] Authorizing...');
-      setAuthStage('idle');
-      setConnecting(true);
-      sendEvent('ssh:connect', {
-        sessionId,
-        host,
-        username: pendingUsername,
-        password: line,
-        port: 22,
-      });
-      setInput('');
-      return;
-    }
-
-    if (authStage !== 'ready') return;
     if (!line.trim()) return;
     sendEvent('ssh:input', { sessionId, input: `${line}\n` });
-    appendLog(`$ ${line}`);
+    appendLog(`> ${line}`);
     setInput('');
   };
 
-  const promptLabel = authStage === 'username' ? 'login:' : authStage === 'password' ? 'password:' : connected ? '$' : '>';
-  const inputPlaceholder = authStage === 'username'
-    ? 'enter username'
-    : authStage === 'password'
-      ? 'enter password'
-      : connected
-        ? 'type command'
-        : socketReady
-          ? 'waiting auth'
-          : 'connect first';
+  const promptLabel = connected ? '$' : '>';
+  const inputPlaceholder = connected ? 'type command' : socketReady ? 'enter login or password in terminal stream' : 'connect first';
   const statusLabel = !socketReady
     ? connecting
       ? 'transport connecting'
       : 'disconnected'
-    : authStage === 'ready'
-      ? connected
-        ? 'ssh connected'
-        : 'ready'
-      : authStage === 'password'
-        ? 'awaiting password'
-        : 'awaiting login';
+    : connected
+      ? 'ssh connected'
+      : 'awaiting device prompt';
   const statusColor = connected ? '#7be495' : socketReady ? '#e9c46a' : Colors.muted;
 
   return (
@@ -416,7 +383,7 @@ export default function TerminalScreen() {
               autoCorrect={false}
               spellCheck={false}
               editable={socketReady}
-              secureTextEntry={authStage === 'password'}
+              secureTextEntry={false}
               returnKeyType="send"
               blurOnSubmit={false}
               onSubmitEditing={sendInput}
