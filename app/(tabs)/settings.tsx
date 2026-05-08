@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import Constants from 'expo-constants';
 import { getApiUrl, saveApiUrl, getSession, clearSession, type SessionData } from '../../lib/storage';
 import { testConnection } from '../../lib/api';
 import { Colors } from '../../constants/colors';
@@ -35,6 +36,7 @@ function InfoRow({ label, value, mono = false }: { label: string; value: string;
 }
 
 export default function SettingsScreen() {
+  const appVersion = Constants.expoConfig?.version ?? 'unknown';
   const [apiUrl, setApiUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
   const [session, setSession] = useState<SessionData | null>(null);
@@ -190,7 +192,7 @@ export default function SettingsScreen() {
         <SettingsSection title="ABOUT">
           <InfoRow label="App" value="NetNode Mobile" />
           <View style={styles.divider} />
-          <InfoRow label="Version" value="1.06" />
+          <InfoRow label="Version" value={appVersion} />
           <View style={styles.divider} />
           <InfoRow label="API" value={savedUrl} mono />
         </SettingsSection>

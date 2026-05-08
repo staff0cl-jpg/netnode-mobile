@@ -15,6 +15,7 @@ export interface Device {
   description?: string;
   last_seen?: string;
   cpu_load?: number;
+  cpuLoad?: number;
   mem_used?: number;
   mem_total?: number;
 }
@@ -33,7 +34,8 @@ export interface DashboardMetrics {
   offline_devices: number;
   warning_devices: number;
   active_alerts: number;
-  avg_cpu_load: number;
+  avg_cpu_load: number | null;
+  devices_with_cpu: number;
   down_trunks: TrunkPort[];
   top_devices: Device[];
 }
@@ -41,6 +43,16 @@ export interface DashboardMetrics {
 export interface InventoryMeta {
   categories: string[];
   branches: string[];
+}
+
+export interface TopologyVersion {
+  id?: string | number;
+  version?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  actor?: string;
+  editor?: string;
+  reason?: string;
 }
 
 class ApiError extends Error {
@@ -97,6 +109,13 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
     if (!response.ok) {
       const text = await response.text().catch(() => response.statusText);
+      if (response.status === 401) {
+        await clearSession();
+        throw new ApiError(401, 'Session expired. Please log in again.');
+      }
+      if (response.status === 403) {
+        throw new ApiError(403, 'Access denied for your role.');
+      }
       throw new ApiError(response.status, text || `HTTP ${response.status}`);
     }
 
@@ -128,16 +147,30 @@ export async function getInventoryMeta(): Promise<InventoryMeta> {
   };
 }
 
+export async function getTopologyVersions(): Promise<TopologyVersion[]> {
+  const data = await apiFetch<{ versions?: TopologyVersion[] } | TopologyVersion[]>('/api/topology/versions');
+  if (Array.isArray(data)) return data;
+  return data.versions ?? [];
+}
+
+export async function undoTopology(payload?: { versionId?: string | number; reason?: string }): Promise<{ ok: boolean; message?: string }> {
+  return apiFetch<{ ok?: boolean; message?: string }>('/api/topology/undo', {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  }).then((res) => ({ ok: Boolean(res.ok ?? true), message: res.message }));
+}
+
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const [inventory, raw] = await Promise.all([
     getInventory(),
     apiFetch<{
       devices?: Array<{
-        id: string;
+        id: string | number;
         name: string;
         ip: string;
         branch?: string;
         category?: string;
+        cpuLoad?: number | null;
         trunks?: Array<{
           ifName?: string;
           description?: string;
@@ -146,6 +179,10 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
       }>;
       trunkSummary?: {
         down?: number;
+      };
+      cpuSummary?: {
+        avgCpuLoad?: number | null;
+        devicesWithCpu?: number | null;
       };
     }>('/api/metrics/dashboard'),
   ]);
@@ -167,15 +204,39 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
       }))
   );
 
+  const inventoryById = new Map(inventory.map((d) => [String(d.id), d]));
+  const topDevices: Device[] = (raw.devices ?? []).map((dev) => {
+    const existing = inventoryById.get(String(dev.id));
+    const cpu = typeof dev.cpuLoad === 'number' ? dev.cpuLoad : null;
+    return {
+      ...(existing ?? {
+        id: dev.id,
+        name: dev.name,
+        ip: dev.ip,
+        status: 'offline' as const,
+        branch: dev.branch,
+        category: dev.category,
+      }),
+      cpu_load: cpu ?? existing?.cpu_load,
+      cpuLoad: cpu ?? existing?.cpuLoad,
+    };
+  });
+
+  const avgCpuLoad =
+    typeof raw.cpuSummary?.avgCpuLoad === 'number' ? raw.cpuSummary.avgCpuLoad : null;
+  const devicesWithCpu =
+    typeof raw.cpuSummary?.devicesWithCpu === 'number' ? raw.cpuSummary.devicesWithCpu : 0;
+
   return {
     total_devices: totalDevices,
     online_devices: onlineDevices,
     offline_devices: offlineDevices,
     warning_devices: warningDevices,
     active_alerts: Number(raw.trunkSummary?.down ?? 0) + offlineDevices + warningDevices,
-    avg_cpu_load: 0,
+    avg_cpu_load: avgCpuLoad,
+    devices_with_cpu: devicesWithCpu,
     down_trunks: downTrunks,
-    top_devices: inventory.slice(0, 20),
+    top_devices: (topDevices.length ? topDevices : inventory).slice(0, 20),
   };
 }
 

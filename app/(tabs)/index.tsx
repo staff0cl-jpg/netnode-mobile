@@ -136,8 +136,8 @@ export default function DashboardScreen() {
       color: Colors.red,
     },
     {
-      title: 'Avg Load',
-      value: metrics?.avg_cpu_load != null ? `${Math.round(metrics.avg_cpu_load)}%` : '–',
+      title: 'Avg CPU Load',
+      value: metrics?.avg_cpu_load != null ? `${Math.round(metrics.avg_cpu_load)}%` : 'N/A',
       icon: 'pulse-outline',
       color: Colors.yellow,
     },

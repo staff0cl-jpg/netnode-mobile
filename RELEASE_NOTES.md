@@ -1,5 +1,11 @@
 # NetNode Mobile Release Notes
 
+## 1.07
+- Synced dashboard API mapping with new backend CPU metrics contract (`devices[].cpuLoad`, `cpuSummary.avgCpuLoad`, `cpuSummary.devicesWithCpu`).
+- Updated KPI semantics from online-share approximation to real average CPU load with safe `N/A` fallback when CPU summary is absent.
+- Improved API error handling for authorization failures (`401` session expiration and `403` role access denial).
+- Switched settings version display to centralized package/app metadata (no hardcoded UI version string).
+
 ## 1.06
 - Reworked mobile SSH terminal into an inline console-style flow, closer to the web terminal UX.
 - Added Socket.IO transport hardening with endpoint/path fallback, upgrade handling, and long-polling fallback when websocket upgrade is blocked.
