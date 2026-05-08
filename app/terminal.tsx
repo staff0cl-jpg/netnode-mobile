@@ -230,6 +230,7 @@ export default function TerminalScreen() {
         setSocketReady(true);
         appendLog('[NETNODE] Falling back to polling transport');
         focusInputSoon();
+        let connectEventSent = false;
 
         const receiveLoop = async () => {
           while (pollingActiveRef.current && pollingUrlRef.current === sidPollingUrl) {
@@ -249,7 +250,21 @@ export default function TerminalScreen() {
                   await postPollingPacket(sidPollingUrl, '3');
                   continue;
                 }
-                if (packet === '40') continue;
+                if (packet === '40') {
+                  if (!connectEventSent) {
+                    connectEventSent = true;
+                    await postPollingPacket(
+                      sidPollingUrl,
+                      `42${JSON.stringify(['ssh:connect', {
+                        sessionId,
+                        host,
+                        port: 22,
+                      }])}`,
+                    );
+                    appendLog('[NETNODE] SSH connect requested');
+                  }
+                  continue;
+                }
                 if (packet === '41') {
                   pollingActiveRef.current = false;
                   setConnected(false);
@@ -275,14 +290,6 @@ export default function TerminalScreen() {
 
         try {
           await postPollingPacket(sidPollingUrl, '40');
-          await postPollingPacket(
-            sidPollingUrl,
-            `42${JSON.stringify(['ssh:connect', {
-              sessionId,
-              host,
-              port: 22,
-            }])}`,
-          );
         } catch (e) {
           pollingActiveRef.current = false;
           setSocketReady(false);
