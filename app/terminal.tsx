@@ -23,6 +23,8 @@ function extractEngineOpenPacket(raw: string) {
   return null;
 }
 
+type AuthStage = 'idle' | 'username' | 'password' | 'ready';
+
 export default function TerminalScreen() {
   const { host, name } = useLocalSearchParams<{ host?: string; name?: string }>();
   const sessionId = useMemo(() => makeSessionId(), []);
@@ -36,6 +38,8 @@ export default function TerminalScreen() {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [socketReady, setSocketReady] = useState(false);
+  const [authStage, setAuthStage] = useState<AuthStage>('idle');
+  const [pendingUsername, setPendingUsername] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
 
@@ -81,6 +85,8 @@ export default function TerminalScreen() {
     if (!normalized.includes('ssh error')) return;
     setConnected(false);
     setConnecting(false);
+    setAuthStage('username');
+    appendLog('login:');
   };
 
   const parseEnginePackets = (raw: string) => raw.split(String.fromCharCode(30)).filter(Boolean);
@@ -118,6 +124,8 @@ export default function TerminalScreen() {
     }
     setConnecting(true);
     setSocketReady(false);
+    setAuthStage('idle');
+    setPendingUsername('');
     if (clearLogs) setLogs([]);
     setConnected(false);
 
@@ -154,7 +162,9 @@ export default function TerminalScreen() {
           const ok = data.status === 'connected';
           setConnected(ok);
           setConnecting(false);
+          setAuthStage(ok ? 'ready' : 'username');
           appendLog(ok ? '[NETNODE] SSH connected' : '[NETNODE] SSH disconnected');
+          if (!ok) appendLog('login:');
         }
       } catch {
         // ignore malformed frame
@@ -230,20 +240,10 @@ export default function TerminalScreen() {
         setSocketReady(true);
         appendLog('[NETNODE] Falling back to polling transport');
         focusInputSoon();
-        let connectEventSent = false;
-        const sendSshConnectOnce = async () => {
-          if (connectEventSent) return;
-          connectEventSent = true;
-          await postPollingPacket(
-            sidPollingUrl,
-            `42${JSON.stringify(['ssh:connect', {
-              sessionId,
-              host,
-              port: 22,
-            }])}`,
-          );
-          appendLog('[NETNODE] SSH connect requested');
-        };
+        setAuthStage('username');
+        setConnecting(false);
+        appendLog('[NETNODE] Transport ready');
+        appendLog('login:');
 
         const receiveLoop = async () => {
           while (pollingActiveRef.current && pollingUrlRef.current === sidPollingUrl) {
@@ -264,7 +264,6 @@ export default function TerminalScreen() {
                   continue;
                 }
                 if (packet === '40') {
-                  await sendSshConnectOnce();
                   continue;
                 }
                 if (packet === '41') {
@@ -292,9 +291,6 @@ export default function TerminalScreen() {
 
         try {
           await postPollingPacket(sidPollingUrl, '40');
-          // Some proxies/backends do not emit explicit namespace ack quickly on polling.
-          // Fire connect request once right away and keep ack-based fallback above.
-          await sendSshConnectOnce();
         } catch (e) {
           pollingActiveRef.current = false;
           setSocketReady(false);
@@ -326,14 +322,9 @@ export default function TerminalScreen() {
           setSocketReady(true);
           completed = true;
           appendLog('[NETNODE] Transport ready');
-          setConnecting(true);
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(`42${JSON.stringify(['ssh:connect', {
-              sessionId,
-              host,
-              port: 22,
-            }])}`);
-          }
+          setConnecting(false);
+          setAuthStage('username');
+          appendLog('login:');
           return;
         }
         if (msg === '2') {
@@ -378,15 +369,57 @@ export default function TerminalScreen() {
 
   const sendInput = () => {
     const line = input;
-    if (!socketReady) return;
+    if (!socketReady && !connecting) {
+      appendLog('[NETNODE] Reconnecting transport...');
+      void connect(false);
+      return;
+    }
+
+    if (authStage === 'username') {
+      const username = line.trim();
+      if (!username) return;
+      setPendingUsername(username);
+      appendLog(`login: ${username}`);
+      appendLog('password:');
+      setAuthStage('password');
+      setInput('');
+      return;
+    }
+
+    if (authStage === 'password') {
+      if (!pendingUsername) return;
+      appendLog('password: ********');
+      appendLog('[NETNODE] SSH connect requested');
+      setAuthStage('idle');
+      setConnecting(true);
+      sendEvent('ssh:connect', {
+        sessionId,
+        host,
+        username: pendingUsername,
+        password: line,
+        port: 22,
+      });
+      setInput('');
+      return;
+    }
+
+    if (authStage !== 'ready') return;
     if (!line.trim()) return;
     sendEvent('ssh:input', { sessionId, input: `${line}\n` });
-    appendLog(`> ${line}`);
+    appendLog(`$ ${line}`);
     setInput('');
   };
 
-  const promptLabel = connected ? '$' : '>';
-  const inputPlaceholder = connected ? 'type command' : socketReady ? 'enter login or password in terminal stream' : 'connect first';
+  const promptLabel = authStage === 'username' ? 'login:' : authStage === 'password' ? 'password:' : connected ? '$' : '>';
+  const inputPlaceholder = authStage === 'username'
+    ? 'enter username'
+    : authStage === 'password'
+      ? 'enter password'
+      : connected
+        ? 'type command'
+        : socketReady
+          ? 'waiting auth'
+          : 'press Enter to reconnect';
   const statusLabel = !socketReady
     ? connecting
       ? 'transport connecting'
@@ -406,7 +439,17 @@ export default function TerminalScreen() {
         {connecting ? <ActivityIndicator color={Colors.accent} /> : null}
       </View>
 
-      <TouchableOpacity activeOpacity={1} style={styles.terminal} onPress={() => inputRef.current?.focus()}>
+      <TouchableOpacity
+        activeOpacity={1}
+        style={styles.terminal}
+        onPress={() => {
+          inputRef.current?.focus();
+          if (!socketReady && !connecting) {
+            appendLog('[NETNODE] Reconnecting transport...');
+            void connect(false);
+          }
+        }}
+      >
         <ScrollView ref={scrollRef} contentContainerStyle={styles.terminalContent} keyboardShouldPersistTaps="always">
           <View style={styles.metaLine}>
             <Text style={styles.metaHost}>{host ?? 'unknown-host'}</Text>
@@ -425,8 +468,8 @@ export default function TerminalScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
-              editable={socketReady}
-              secureTextEntry={false}
+              editable
+              secureTextEntry={authStage === 'password'}
               returnKeyType="send"
               blurOnSubmit={false}
               onSubmitEditing={sendInput}
